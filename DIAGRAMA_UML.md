@@ -56,6 +56,28 @@ Este documento describe la arquitectura del frontend (React) y su relación con 
 │  │  │  - favorites: string[]                       │    │   │
 │  │  │  - config: AppConfig                         │    │   │
 │  │  │  - isLoading: boolean                         │    │   │
+│  │  │  - launchHistory: LaunchHistoryItem[]         │    │   │
+│  │  │  - smartSuggestions: Suggestion[]            │    │   │
+│  │  └──────────────────────────────────────────────┘    │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              MÓDULOS DE IA (TypeScript)              │   │
+│  │                                                        │   │
+│  │  ┌─────────────────┐  ┌──────────────────┐         │   │
+│  │  │ fuzzySearch.ts  │  │smartSuggestions  │         │   │
+│  │  │                 │  │      .ts         │         │   │
+│  │  │ - intelligent   │  │                  │         │   │
+│  │  │   Search()      │  │ - analyzeUsage   │         │   │
+│  │  │ - similarity()  │  │   Patterns()     │         │   │
+│  │  │ - getSuggestions│  │ - getSmart()     │         │   │
+│  │  └─────────────────┘  └──────────────────┘         │   │
+│  │                                                        │   │
+│  │  ┌──────────────────────────────────────────────┐    │   │
+│  │  │      commandParser.ts                        │    │   │
+│  │  │  - parseCommand()                            │    │   │
+│  │  │  - evaluateMath()                            │    │   │
+│  │  │  - formatCalcResult()                        │    │   │
 │  │  └──────────────────────────────────────────────┘    │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                                 │
@@ -77,6 +99,11 @@ Este documento describe la arquitectura del frontend (React) y su relación con 
 │  │  │ - ContextMenu│    └──────────────┘                │   │
 │  │  │ - Selection  │                                    │   │
 │  │  └──────────────┘                                    │   │
+│  │         │                                            │   │
+│  │  ┌──────▼──────────┐  ┌──────────────────────┐     │   │
+│  │  │ CalcResult      │  │ SmartSuggestions     │     │   │
+│  │  │ (IA - Cálculos) │  │ (IA - Sugerencias)   │     │   │
+│  │  └─────────────────┘  └──────────────────────┘     │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -111,6 +138,21 @@ User Click → ResultsList → window.api.launch()
 User Click Settings → window.api.openSettings()
                   → IPC: 'open-settings' → Main
                   → createSettingsWindow() → Settings Window
+```
+
+### 5. Comandos de IA (Cálculos)
+```
+User Input "calcula 2+2" → commandParser.parseCommand()
+                       → evaluateMath() → CalcResult render
+                       → Resultado mostrado
+```
+
+### 6. Sugerencias Inteligentes
+```
+Launcher Open (sin query) → getSmartSuggestions()
+                        → analyzeUsagePatterns()
+                        → SmartSuggestions render
+                        → Sugerencias basadas en historial
 ```
 
 ## Tipos TypeScript (Shared)
@@ -186,6 +228,21 @@ src/shared/types.ts
 - **Responsabilidades**:
   - Mostrar ayuda al usuario
 
+### CalcResult (Componente de IA)
+- **Props**: `query: string`, `result: string`
+- **Estado**: Ninguno (presentacional)
+- **Responsabilidades**:
+  - Mostrar resultados de cálculos
+  - Interfaz visual para comandos de cálculo
+
+### SmartSuggestions (Componente de IA)
+- **Props**: `suggestions`, `activeIndex`, `onSelect`
+- **Estado**: Derivado del store
+- **Responsabilidades**:
+  - Mostrar sugerencias inteligentes
+  - Mostrar razón de la sugerencia
+  - Indicador de confianza
+
 ## State Management (Zustand)
 
 ```typescript
@@ -228,17 +285,109 @@ Main Process (Node.js)
     │ IPC (ipcMain.handle)
     │
     ▼
-Preload (Bridge)
+Preload (Bridge) [preload.ts]
     │
-    │ contextBridge.exposeInMainWorld
+    │ contextBridge.exposeInMainWorld('api')
+    │ Tipado con TypeScript
     │
     ▼
 Renderer (React)
     │
-    │ window.api.*
+    │ window.api.* (API tipada)
     │
     ▼
 useAppStore (Zustand)
+    │
+    │ filterApps()
+    │
+    ├──► intelligentSearch() [fuzzySearch.ts]
+    ├──► getSmartSuggestions() [smartSuggestions.ts]
+    └──► parseCommand() [commandParser.ts]
+```
+
+## Flujo Completo con IA
+
+```
+Usuario escribe "visul studio"
+    │
+    ▼
+SearchBar.tsx → setSearchQuery()
+    │
+    ▼
+useAppStore.filterApps()
+    │
+    ▼
+fuzzySearch.intelligentSearch()
+    ├──► Corrección de errores (Levenshtein)
+    ├──► Búsqueda por sinónimos
+    └──► Fuzzy matching
+    │
+    ▼
+ResultsList.tsx → Muestra "Visual Studio Code"
+```
+
+```
+Usuario abre launcher (sin escribir)
+    │
+    ▼
+Launcher.tsx → filterApps('')
+    │
+    ▼
+smartSuggestions.getSmartSuggestions()
+    ├──► analyzeUsagePatterns()
+    ├──► Considera hora del día
+    └──► Analiza historial
+    │
+    ▼
+SmartSuggestions.tsx → Muestra sugerencias
+```
+
+```
+Usuario escribe "calcula 25*4"
+    │
+    ▼
+commandParser.parseCommand()
+    │
+    ▼
+commandParser.evaluateMath()
+    │
+    ▼
+CalcResult.tsx → Muestra "100"
+```
+
+## Módulos de Inteligencia Artificial
+
+```
+src/ai/
+├── fuzzySearch.ts          # Búsqueda inteligente con fuzzy matching
+│   ├── intelligentSearch() # Búsqueda con corrección de errores
+│   ├── getSearchSuggestions() # Sugerencias de búsqueda
+│   └── similarityScore()   # Algoritmo de similitud
+├── smartSuggestions.ts     # Sugerencias basadas en patrones
+│   ├── analyzeUsagePatterns() # Análisis de historial
+│   ├── getSmartSuggestions() # Sugerencias contextuales
+│   └── getTimeBasedSuggestions() # Sugerencias por hora
+└── commandParser.ts        # Parser de comandos naturales
+    ├── parseCommand()      # Detección de comandos
+    ├── evaluateMath()      # Evaluación de expresiones
+    └── formatCalcResult()  # Formateo de resultados
+```
+
+## Relación con Componentes React
+
+```
+Launcher.tsx
+├── Usa: fuzzySearch.intelligentSearch()
+├── Usa: smartSuggestions.getSmartSuggestions()
+├── Usa: commandParser.parseCommand()
+├── Renderiza: CalcResult (cuando hay cálculo)
+└── Renderiza: SmartSuggestions (cuando no hay query)
+
+SearchBar.tsx
+└── Input → trigger → intelligentSearch()
+
+ResultsList.tsx
+└── Muestra resultados de intelligentSearch()
 ```
 
 ## Tecnologías Utilizadas
@@ -247,7 +396,11 @@ useAppStore (Zustand)
 - **State Management**: Zustand
 - **Build Tool**: Vite + electron-vite
 - **Backend**: Electron (Main Process)
-- **Persistencia**: electron-store
+- **Persistencia**: electron-store v8.2.0
 - **Tipado**: TypeScript (strict mode)
 - **IPC**: Tipado con interfaces compartidas
+- **IA**: Módulos locales (sin dependencias externas)
+  - Fuzzy matching
+  - Análisis de patrones
+  - Procesamiento de lenguaje natural básico
 
