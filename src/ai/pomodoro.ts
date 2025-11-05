@@ -351,7 +351,7 @@ let pomodoroInstance: PomodoroTimer | null = null;
 async function savePomodoroState(status: PomodoroStatus, startedAt: number | null, pausedAt: number | null, pausedDuration: number): Promise<void> {
   try {
     // Usar window.api para guardar en el main process
-    if (typeof window !== 'undefined' && window.api && 'setConfig' in window.api) {
+    if (typeof window !== 'undefined' && window.api && window.api.setConfig) {
       await window.api.setConfig('pomodoro', 'state', {
         state: status.state,
         timeRemaining: status.timeRemaining,
@@ -378,7 +378,7 @@ async function restorePomodoroState(): Promise<{
   pausedDuration: number;
 } | null> {
   try {
-    if (typeof window !== 'undefined' && window.api && 'getConfig' in window.api) {
+    if (typeof window !== 'undefined' && window.api && window.api.getConfig) {
       const config = await window.api.getConfig();
       // El estado puede estar en config.pomodoro.state o directamente en config.pomodoro
       const pomodoroState = config?.pomodoro?.state || config?.pomodoro;
@@ -420,11 +420,85 @@ async function restorePomodoroState(): Promise<{
 }
 
 /**
+ * Carga la configuración del Pomodoro desde el almacenamiento
+ */
+async function loadPomodoroConfig(): Promise<Partial<PomodoroConfig> | null> {
+  try {
+    if (typeof window !== 'undefined' && window.api && window.api.getConfig) {
+      const config = await window.api.getConfig();
+      const pomodoroConfig = config?.pomodoro?.config;
+      
+      if (pomodoroConfig) {
+        return {
+          workDuration: pomodoroConfig.workDuration ? pomodoroConfig.workDuration * 60 : undefined,
+          shortBreakDuration: pomodoroConfig.shortBreakDuration ? pomodoroConfig.shortBreakDuration * 60 : undefined,
+          longBreakDuration: pomodoroConfig.longBreakDuration ? pomodoroConfig.longBreakDuration * 60 : undefined,
+          pomodorosUntilLongBreak: pomodoroConfig.pomodorosUntilLongBreak
+        };
+      }
+    }
+  } catch (error) {
+    console.error('Error cargando configuración Pomodoro:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Guarda la configuración del Pomodoro
+ */
+export async function savePomodoroConfig(config: {
+  workDuration: number;
+  shortBreakDuration: number;
+  longBreakDuration?: number;
+  pomodorosUntilLongBreak?: number;
+}): Promise<void> {
+  try {
+    if (typeof window !== 'undefined' && window.api && window.api.setConfig) {
+      await window.api.setConfig('pomodoro', 'config', {
+        workDuration: config.workDuration,
+        shortBreakDuration: config.shortBreakDuration,
+        longBreakDuration: config.longBreakDuration || 15,
+        pomodorosUntilLongBreak: config.pomodorosUntilLongBreak || 4
+      });
+      
+      // Actualizar la instancia existente si hay una
+      if (pomodoroInstance) {
+        pomodoroInstance.updateConfig({
+          workDuration: config.workDuration * 60,
+          shortBreakDuration: config.shortBreakDuration * 60,
+          longBreakDuration: (config.longBreakDuration || 15) * 60,
+          pomodorosUntilLongBreak: config.pomodorosUntilLongBreak || 4
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error guardando configuración Pomodoro:', error);
+  }
+}
+
+/**
+ * Obtiene la configuración actual del Pomodoro
+ */
+export async function getPomodoroConfig(): Promise<PomodoroConfig> {
+  const savedConfig = await loadPomodoroConfig();
+  if (savedConfig) {
+    return {
+      ...DEFAULT_CONFIG,
+      ...savedConfig
+    };
+  }
+  return DEFAULT_CONFIG;
+}
+
+/**
  * Obtiene la instancia global del temporizador Pomodoro
  */
 export async function getPomodoroTimer(): Promise<PomodoroTimer> {
   if (!pomodoroInstance) {
-    pomodoroInstance = new PomodoroTimer();
+    // Cargar configuración guardada
+    const savedConfig = await loadPomodoroConfig();
+    pomodoroInstance = new PomodoroTimer(savedConfig || undefined);
     
     // Restaurar estado guardado
     const restored = await restorePomodoroState();

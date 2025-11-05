@@ -360,3 +360,95 @@
       0 8px 32px rgba(0, 0, 0, 0.4),
       0 0 0 1px rgba(16, 185, 129, 0.1);
   }
+  
+  /* ==================================
+     CONFIGURACIÓN DE TIEMPOS
+     ================================== */
+  
+  .pomodoro-config {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .config-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .config-row:last-of-type {
+    margin-bottom: 0;
+  }
+  
+  .config-row label {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.7);
+    flex: 1;
+  }
+  
+  .config-input {
+    width: 80px;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.875rem;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  
+  .config-input:focus {
+    outline: none;
+    border-color: #667eea;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  
+  .config-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    justify-content: flex-end;
+  }
+  
+  .config-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .config-btn.save {
+    background: #667eea;
+    color: white;
+  }
+  
+  .config-btn.save:hover {
+    background: #5568d3;
+  }
+  
+  .config-btn.cancel {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .config-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  
+  .control-btn.config-btn {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem;
+  }
+  
+  .control-btn.config-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
