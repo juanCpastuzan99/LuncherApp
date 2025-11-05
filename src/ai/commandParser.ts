@@ -12,7 +12,14 @@ export type CommandType =
   | 'convert'
   | 'search' 
   | 'educational'
+  | 'flashcard'
+  | 'note'
+  | 'quiz'
   | 'pomodoro'
+  | 'snippet'
+  | 'todo'
+  | 'commit'
+  | 'docs'
   | 'unknown';
 
 export interface ParsedCommand {
@@ -60,16 +67,6 @@ const WINDOW_COMMANDS: Record<string, string> = {
 };
 
 /**
- * Patrones para búsqueda web
- */
-const SEARCH_KEYWORDS = ['buscar', 'search', 'busca', 'google', 'web'];
-
-/**
- * Patrones para calculadora
- */
-const CALC_KEYWORDS = ['calcula', 'calculate', 'calc', '=', 'cuánto', 'cuanto'];
-
-/**
  * Detecta si la query es un comando de lenguaje natural
  */
 export function parseCommand(query: string): ParsedCommand {
@@ -101,10 +98,52 @@ export function parseCommand(query: string): ParsedCommand {
     return educationalCommand;
   }
   
+  // Comando de flashcards
+  const flashcardCommand = detectFlashcardCommand(lowerQuery);
+  if (flashcardCommand) {
+    return flashcardCommand;
+  }
+  
+  // Comando de notas
+  const noteCommand = detectNoteCommand(lowerQuery);
+  if (noteCommand) {
+    return noteCommand;
+  }
+  
+  // Comando de quiz
+  const quizCommand = detectQuizCommand(lowerQuery);
+  if (quizCommand) {
+    return quizCommand;
+  }
+  
   // Comando Pomodoro
   const pomodoroCommand = detectPomodoroCommand(lowerQuery);
   if (pomodoroCommand) {
     return pomodoroCommand;
+  }
+  
+  // Comando de snippets
+  const snippetCommand = detectSnippetCommand(lowerQuery);
+  if (snippetCommand) {
+    return snippetCommand;
+  }
+  
+  // Comando de todos
+  const todoCommand = detectTodoCommand(lowerQuery);
+  if (todoCommand) {
+    return todoCommand;
+  }
+  
+  // Comando de commit
+  const commitCommand = detectCommitCommand(lowerQuery);
+  if (commitCommand) {
+    return commitCommand;
+  }
+  
+  // Comando de documentación
+  const docsCommand = detectDocsCommand(lowerQuery);
+  if (docsCommand) {
+    return docsCommand;
   }
   
   // Comando de búsqueda web
@@ -474,4 +513,266 @@ export function formatCalcResult(result: number): string {
   return result.toString();
 }
 
+/**
+ * Detecta comandos de flashcards
+ */
+function detectFlashcardCommand(query: string): ParsedCommand | null {
+  // "crear tarjeta: pregunta es respuesta", "crear tarjeta matemáticas: capital de Francia es París"
+  const createPattern = /crear\s+tarjeta\s*(?:de\s+(\w+))?\s*:?\s*(.+)/i;
+  
+  // "estudiar tarjetas de matemáticas", "estudiar matemáticas", "tarjetas matemáticas"
+  const studyPattern = /(?:estudiar|study|tarjetas|flashcards?)\s*(?:de\s+)?(\w+)?/i;
+  
+  if (createPattern.test(query)) {
+    const match = query.match(createPattern);
+    if (match && match[2]) {
+      return {
+        type: 'flashcard',
+        action: 'create',
+        subject: match[1]?.toLowerCase() || 'general',
+        query: match[2].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (studyPattern.test(query)) {
+    const match = query.match(studyPattern);
+    if (match) {
+      return {
+        type: 'flashcard',
+        action: 'study',
+        subject: match[1]?.toLowerCase(),
+        confidence: 0.85
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de notas
+ */
+function detectNoteCommand(query: string): ParsedCommand | null {
+  // "nueva nota: título", "crear nota: álgebra"
+  const createPattern = /(?:nueva|crear|new)\s+nota\s*:?\s*(.+)/i;
+  
+  // "buscar nota: query", "notas de matemáticas", "notas matemáticas"
+  const searchPattern = /(?:buscar|search|notas?)\s+(?:nota|de)?\s*:?\s*(.+)/i;
+  
+  if (createPattern.test(query)) {
+    const match = query.match(createPattern);
+    if (match && match[1]) {
+      return {
+        type: 'note',
+        action: 'create',
+        subject: match[1].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (searchPattern.test(query)) {
+    const match = query.match(searchPattern);
+    if (match && match[1]) {
+      return {
+        type: 'note',
+        action: 'search',
+        subject: match[1].trim(),
+        confidence: 0.8
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de quiz
+ */
+function detectQuizCommand(query: string): ParsedCommand | null {
+  // "crear quiz: nombre", "crear quiz historia"
+  const createPattern = /(?:crear|create|new)\s+quiz\s*:?\s*(.+)/i;
+  
+  // "empezar quiz de matemáticas", "quiz historia", "empezar quiz: historia"
+  const startPattern = /(?:empezar|start|iniciar|quiz)\s*(?:de|:)?\s*(.+)/i;
+  
+  if (createPattern.test(query)) {
+    const match = query.match(createPattern);
+    if (match && match[1]) {
+      return {
+        type: 'quiz',
+        action: 'create',
+        subject: match[1].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (startPattern.test(query)) {
+    const match = query.match(startPattern);
+    if (match && match[1]) {
+      return {
+        type: 'quiz',
+        action: 'start',
+        subject: match[1].trim(),
+        confidence: 0.85
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de snippets de código
+ */
+function detectSnippetCommand(query: string): ParsedCommand | null {
+  // "crear snippet: javascript", "snippet react", "buscar snippet: array map"
+  const createPattern = /(?:crear|create|new)\s+snippet\s*(?:de|:)?\s*(\w+)?\s*:?\s*(.+)/i;
+  
+  // "snippet javascript", "snippets react", "buscar snippet: query"
+  const searchPattern = /(?:buscar|search|snippets?)\s*(?:de|:)?\s*(\w+)?\s*:?\s*(.+)?/i;
+  
+  if (createPattern.test(query)) {
+    const match = query.match(createPattern);
+    if (match) {
+      return {
+        type: 'snippet',
+        action: 'create',
+        subject: match[1]?.toLowerCase() || match[2]?.trim().toLowerCase(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (searchPattern.test(query)) {
+    const match = query.match(searchPattern);
+    if (match) {
+      return {
+        type: 'snippet',
+        action: 'search',
+        subject: match[1]?.toLowerCase() || match[2]?.trim().toLowerCase(),
+        confidence: 0.8
+      };
+    }
+  }
+  
+  // Patrón simple: "snippet javascript"
+  const simplePattern = /^snippet\s+(\w+)$/i;
+  const simpleMatch = query.match(simplePattern);
+  if (simpleMatch) {
+    return {
+      type: 'snippet',
+      action: 'search',
+      subject: simpleMatch[1].toLowerCase(),
+      confidence: 0.7
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de todos
+ */
+function detectTodoCommand(query: string): ParsedCommand | null {
+  // "crear todo: tarea", "todo: revisar código", "nueva tarea: nombre"
+  const createPattern = /(?:crear|create|new|nueva)\s+(?:todo|tarea|task)\s*:?\s*(.+)/i;
+  const todoPattern = /^todo\s*:?\s*(.+)$/i;
+  
+  // "listar todos", "todos", "mostrar tareas"
+  const listPattern = /(?:listar|mostrar|show|todos?|tareas?)$/i;
+  
+  if (createPattern.test(query)) {
+    const match = query.match(createPattern);
+    if (match && match[1]) {
+      return {
+        type: 'todo',
+        action: 'create',
+        subject: match[1].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (todoPattern.test(query)) {
+    const match = query.match(todoPattern);
+    if (match && match[1]) {
+      return {
+        type: 'todo',
+        action: 'create',
+        subject: match[1].trim(),
+        confidence: 0.95
+      };
+    }
+  }
+  
+  if (listPattern.test(query)) {
+    return {
+      type: 'todo',
+      action: 'list',
+      confidence: 0.85
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de commit message
+ */
+function detectCommitCommand(query: string): ParsedCommand | null {
+  // "commit: agregar feature", "crear commit: mensaje", "commit message: texto"
+  const commitPattern = /(?:commit|crear\s+commit|commit\s+message)\s*:?\s*(.+)/i;
+  
+  if (commitPattern.test(query)) {
+    const match = query.match(commitPattern);
+    if (match && match[1]) {
+      return {
+        type: 'commit',
+        subject: match[1].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de documentación
+ */
+function detectDocsCommand(query: string): ParsedCommand | null {
+  // "mdn: array map", "docs react", "documentación: hooks"
+  const mdnPattern = /^(?:mdn|mozilla)\s*:?\s*(.+)/i;
+  const docsPattern = /(?:docs|documentaci[oó]n|documentation)\s*(?:de|:)?\s*(.+)/i;
+  
+  if (mdnPattern.test(query)) {
+    const match = query.match(mdnPattern);
+    if (match && match[1]) {
+      return {
+        type: 'docs',
+        action: 'mdn',
+        query: match[1].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (docsPattern.test(query)) {
+    const match = query.match(docsPattern);
+    if (match && match[1]) {
+      return {
+        type: 'docs',
+        action: 'search',
+        query: match[1].trim(),
+        confidence: 0.8
+      };
+    }
+  }
+  
+  return null;
+}
 

@@ -1,84 +1,46 @@
 .calc-result {
-  padding: 20px 16px;
-  text-align: center;
-  background: linear-gradient(135deg, rgba(33, 150, 243, 0.15) 0%, rgba(33, 150, 243, 0.05) 100%);
-  border-radius: 8px;
-  margin: 0 12px 12px 12px;
-  border: 1px solid rgba(33, 150, 243, 0.3);
-  animation: fadeIn 0.15s ease-in-out;
-  flex-shrink: 0;
+  padding: 1rem 1.25rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-left: 3px solid #667eea;
+  margin: 0.5rem 1.25rem;
+  border-radius: 4px;
+  position: relative;
 }
 
-.calc-result.calculator-mode {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(33, 150, 243, 0.15) 100%);
-  border-color: rgba(76, 175, 80, 0.4);
+.calc-expression {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.calc-value {
+  color: #a5b4fc;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.calc-hint {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.calc-copied {
+  color: #22c55e;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  animation: fadeIn 0.3s ease-in;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: translateY(-5px);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
-}
-
-.calc-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
-}
-
-.calc-icon {
-  font-size: 16px;
-}
-
-.calc-label {
-  font-size: 11px;
-}
-
-.calc-expression {
-  font-size: 18px;
-  color: rgba(255, 255, 255, 0.9);
-  margin-bottom: 8px;
-  font-family: 'Consolas', 'Monaco', monospace;
-  word-break: break-all;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-  min-height: 24px;
-}
-
-.calc-equals {
-  font-size: 20px;
-  color: rgba(255, 255, 255, 0.5);
-  margin: 4px 0;
-  font-weight: bold;
-}
-
-.calc-value {
-  font-size: 36px;
-  font-weight: bold;
-  color: #4CAF50;
-  margin-bottom: 4px;
-  font-family: 'Consolas', 'Monaco', monospace;
-  text-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
-}
-
-.calc-hint {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  margin-top: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 

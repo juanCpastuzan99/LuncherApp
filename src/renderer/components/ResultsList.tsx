@@ -1,146 +1,87 @@
-import React, { useState, useEffect } from 'react';
-import type { App } from '@shared/types';
-import { useAppStore } from '../store/useAppStore';
+import React from 'react';
 import './ResultsList.css';
+
+interface App {
+  id: string;
+  name: string;
+  path: string;
+  ext: string;
+  type: string;
+}
 
 interface ResultsListProps {
   apps: App[];
-  activeIndex: number;
-  isLoading: boolean;
-  onLaunch: (app: App) => void;
+  selectedIndex: number;
+  onSelect: (app: App) => void;
+  query: string;
 }
 
-// Función para obtener nombre corto
-function getShortName(app: App): string {
-  if (app.name && app.name.length < 50) {
-    return app.name;
+const ResultsList: React.FC<ResultsListProps> = ({ apps, selectedIndex, onSelect, query }) => {
+  // Si no hay query, no mostrar nada
+  if (!query || !query.trim()) {
+    return null;
   }
   
-  if (app.path.length > 60) {
-    const pathParts = app.path.split(/[/\\]/);
-    const fileName = pathParts[pathParts.length - 1];
-    return fileName.replace(/\.(lnk|exe|appref-ms)$/i, '');
+  // Si hay query pero no hay resultados, mostrar mensaje
+  if (apps.length === 0) {
+    return (
+      <div className="results-list" style={{ 
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '150px',
+        padding: '2rem'
+      }}>
+        <div style={{ 
+          textAlign: 'center', 
+          color: 'rgba(255, 255, 255, 0.7)', 
+          fontSize: '1rem'
+        }}>
+          No se encontraron aplicaciones
+        </div>
+      </div>
+    );
   }
-  
-  const parts = app.path.split(/[/\\]/);
-  if (parts.length > 3) {
-    return '...' + parts.slice(-3).join('\\');
-  }
-  
-  return app.path;
-}
 
-export const ResultsList: React.FC<ResultsListProps> = ({
-  apps,
-  activeIndex,
-  isLoading,
-  onLaunch
-}) => {
-  const { favorites, addFavorite, removeFavorite } = useAppStore();
-  const [iconCache, setIconCache] = useState<Map<string, string>>(new Map());
-  
-  // Cargar iconos para las aplicaciones visibles
-  useEffect(() => {
-    if (apps.length === 0) return;
-    
-    let cancelled = false;
-    
-    const loadIcons = async () => {
-      const newCache = new Map(iconCache);
-      let hasNewIcons = false;
-      
-      // Cargar iconos para las primeras 30 aplicaciones (las más visibles)
-      const appsToLoad = apps.slice(0, 30);
-      
-      // Cargar iconos en paralelo
-      const loadPromises = appsToLoad.map(async (app) => {
-        if (cancelled) return;
-        
-        const cacheKey = `${app.path}-${app.type}`;
-        
-        // Si ya está en cache, saltar
-        if (newCache.has(cacheKey)) return;
-        
-        try {
-          const iconDataUrl = await window.api.getAppIcon(app.path, app.type);
-          if (!cancelled && iconDataUrl && iconDataUrl.startsWith('data:image')) {
-            newCache.set(cacheKey, iconDataUrl);
-            hasNewIcons = true;
-          }
-        } catch (error) {
-          // Silenciar errores - simplemente no mostrar icono
-          console.debug(`Icono no disponible para ${app.name}`);
-        }
-      });
-      
-      // Esperar a que todos los iconos se carguen
-      await Promise.allSettled(loadPromises);
-      
-      if (!cancelled && hasNewIcons) {
-        setIconCache(newCache);
-      }
-    };
-    
-    loadIcons();
-    
-    return () => {
-      cancelled = true;
-    };
-  }, [apps, iconCache]);
-  
-  const handleContextMenu = async (e: React.MouseEvent, app: App) => {
-    e.preventDefault();
-    const isFavorite = favorites.includes(app.id);
-    const action = isFavorite ? 
-      `¿Eliminar "${app.name}" de favoritos?` : 
-      `¿Agregar "${app.name}" a favoritos?`;
-    
-    if (confirm(action)) {
-      if (isFavorite) {
-        await window.api.removeFavorite(app.id);
-        removeFavorite(app.id);
-      } else {
-        await window.api.addFavorite(app.id);
-        addFavorite(app.id);
-      }
-    }
+  const highlightMatch = (text: string, query: string) => {
+    if (!query) return text;
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, i) => 
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark key={i}>{part}</mark>
+      ) : (
+        part
+      )
+    );
   };
-  
-  // No mostrar nada si está cargando o no hay resultados
-  if (isLoading || apps.length === 0) {
-    return <ul className="results"></ul>;
-  }
-  
+
   return (
-    <ul className="results">
-      {apps.map((app, idx) => {
-        const cacheKey = `${app.path}-${app.type}`;
-        const iconUrl = iconCache.get(cacheKey);
-        const shortName = getShortName(app);
-        
-        return (
-          <li
-            key={app.id}
-            className={`item ${idx === activeIndex ? 'active' : ''}`}
-            tabIndex={0}
-            onClick={() => onLaunch(app)}
-            onContextMenu={(e) => handleContextMenu(e, app)}
-          >
-            {iconUrl ? (
-              <img src={iconUrl} className="app-icon" alt="" />
-            ) : (
-              <div className="app-icon-placeholder">📱</div>
-            )}
-            <div className="item-content">
-              <div className="name">{shortName}</div>
-              {app.path.length > 60 && (
-                <div className="path">{app.path.substring(0, 60)}...</div>
-              )}
+    <div className="results-list" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      {apps.map((app, index) => (
+        <div
+          key={app.id}
+          className={`result-item ${index === selectedIndex ? 'selected' : ''}`}
+          onClick={() => onSelect(app)}
+          onMouseEnter={() => {}}
+          style={{ display: 'flex', visibility: 'visible', opacity: 1 }}
+        >
+          <div className="result-icon">
+            {app.type === 'uwp' ? '📱' : app.ext === '.exe' ? '💻' : '📄'}
+          </div>
+          <div className="result-content">
+            <div className="result-name">
+              {highlightMatch(app.name, query)}
             </div>
-          </li>
-        );
-      })}
-    </ul>
+            <div className="result-path">{app.path}</div>
+          </div>
+          {index === selectedIndex && (
+            <div className="result-hint">Enter</div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 };
+
+export default ResultsList;
 
