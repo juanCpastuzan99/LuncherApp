@@ -1,0 +1,219 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Configuración - Dev Launcher</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <div class="settings-container">
+      <div class="settings-header">
+        <h1>⚙️ Configuración</h1>
+        <button id="close-btn" class="close-btn">✕</button>
+      </div>
+      
+      <div class="settings-content">
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="general">General</button>
+          <button class="tab" data-tab="hotkeys">Hotkeys</button>
+          <button class="tab" data-tab="favorites">Favoritos</button>
+          <button class="tab" data-tab="history">Historial</button>
+          <button class="tab" data-tab="advanced">Avanzado</button>
+        </div>
+        
+        <!-- Tab Content -->
+        <div class="tab-content">
+          <!-- General Tab -->
+          <div id="tab-general" class="tab-pane active">
+            <h2>Preferencias Generales</h2>
+            
+            <div class="setting-group">
+              <label>
+                <span>Tema</span>
+                <select id="theme-select">
+                  <option value="dark">Oscuro</option>
+                  <option value="light">Claro</option>
+                  <option value="auto">Automático</option>
+                </select>
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Ancho de ventana</span>
+                <input type="number" id="window-width" min="400" max="1200" step="20" />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Altura de ventana</span>
+                <input type="number" id="window-height" min="300" max="800" step="20" />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Máximo de resultados</span>
+                <input type="number" id="max-results" min="5" max="50" step="5" />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="show-path" />
+                <span>Mostrar ruta de archivos</span>
+              </label>
+            </div>
+          </div>
+          
+          <!-- Hotkeys Tab -->
+          <div id="tab-hotkeys" class="tab-pane">
+            <h2>Atajos de Teclado</h2>
+            
+            <div class="setting-group">
+              <label>
+                <span>Abrir lanzador</span>
+                <input type="text" id="hotkey-open" class="hotkey-input" readonly />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Organizar ventanas (Tile)</span>
+                <input type="text" id="hotkey-tile" class="hotkey-input" readonly />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Mover ventana izquierda</span>
+                <input type="text" id="hotkey-move-left" class="hotkey-input" readonly />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Mover ventana derecha</span>
+                <input type="text" id="hotkey-move-right" class="hotkey-input" readonly />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Centrar ventana</span>
+                <input type="text" id="hotkey-center" class="hotkey-input" readonly />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Maximizar ventana</span>
+                <input type="text" id="hotkey-maximize" class="hotkey-input" readonly />
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <span>Minimizar ventana</span>
+                <input type="text" id="hotkey-minimize" class="hotkey-input" readonly />
+              </label>
+            </div>
+          </div>
+          
+          <!-- Favorites Tab -->
+          <div id="tab-favorites" class="tab-pane">
+            <h2>Favoritos</h2>
+            <div id="favorites-list" class="favorites-list">
+              <p class="empty-message">No hay favoritos aún. Haz clic derecho en una aplicación para agregarla.</p>
+            </div>
+          </div>
+          
+          <!-- History Tab -->
+          <div id="tab-history" class="tab-pane">
+            <h2>Historial</h2>
+            
+            <div class="history-section">
+              <h3>Búsquedas Recientes</h3>
+              <div id="search-history-list" class="history-list">
+                <p class="empty-message">No hay búsquedas recientes</p>
+              </div>
+              <button id="clear-search-history" class="btn-secondary">Limpiar búsquedas</button>
+            </div>
+            
+            <div class="history-section">
+              <h3>Aplicaciones Lanzadas</h3>
+              <div id="launch-history-list" class="history-list">
+                <p class="empty-message">No hay aplicaciones lanzadas recientemente</p>
+              </div>
+              <button id="clear-launch-history" class="btn-secondary">Limpiar lanzamientos</button>
+            </div>
+          </div>
+          
+          <!-- Advanced Tab -->
+          <div id="tab-advanced" class="tab-pane">
+            <h2>Configuración Avanzada</h2>
+            
+            <div class="setting-group">
+              <h3>Escaneo de Aplicaciones</h3>
+              <label class="checkbox-label">
+                <input type="checkbox" id="scan-uwp" />
+                <span>Incluir aplicaciones UWP (Microsoft Store)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="scan-registry" />
+                <span>Incluir aplicaciones del registro</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="scan-local" />
+                <span>Incluir aplicaciones locales (AppData)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="scan-startmenu" />
+                <span>Incluir menú de inicio</span>
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <h3>Gestión de Ventanas</h3>
+              <label class="checkbox-label">
+                <input type="checkbox" id="enable-tiling" />
+                <span>Habilitar tiling de ventanas</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="enable-floating" />
+                <span>Habilitar ventanas flotantes</span>
+              </label>
+              <label>
+                <span>Espacio entre ventanas (gap)</span>
+                <input type="number" id="window-gap" min="0" max="50" step="5" />
+              </label>
+              <label>
+                <span>Layout por defecto</span>
+                <select id="default-layout">
+                  <option value="grid">Grid</option>
+                  <option value="vertical">Vertical</option>
+                  <option value="horizontal">Horizontal</option>
+                </select>
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <h3>Datos</h3>
+              <div class="button-group">
+                <button id="export-config" class="btn-primary">Exportar configuración</button>
+                <button id="import-config" class="btn-primary">Importar configuración</button>
+                <button id="reset-config" class="btn-danger">Resetear todo</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="settings.js"></script>
+  </body>
+</html>
+

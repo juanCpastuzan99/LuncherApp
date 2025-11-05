@@ -1,0 +1,80 @@
+{
+  "name": "win11-dev-launcher",
+  "version": "0.1.0",
+  "description": "Windows 11 developer-focused app launcher (Electron) inspired by Hyprland with window management features",
+  "main": "src/main.js",
+  "bin": {
+    "win11-launcher": "./bin/win11-launcher.js",
+    "win-launcher": "./bin/win11-launcher.js"
+  },
+  "preferGlobal": true,
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:simple": "electron .",
+    "dev:vite": "electron-vite dev",
+    "build": "vite build && electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "npm run dev",
+    "dist": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps",
+    "install-global": "npm install -g .",
+    "build-installer": "npm run build && electron-builder --win --publish never"
+  },
+  "keywords": [
+    "electron",
+    "launcher",
+    "windows",
+    "window-manager",
+    "hyprland",
+    "tiling",
+    "productivity",
+    "windows-11"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juanCpastuzan99/easyappWin11.git"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "app-icon": "^0.13.2"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.yourdomain.win11devlauncher",
+    "productName": "Win11 Dev Launcher",
+    "files": [
+      "src/**/*",
+      "bin/**/*",
+      "package.json",
+      "README.md",
+      "WINDOW_MANAGEMENT.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

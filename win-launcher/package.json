@@ -1,0 +1,22 @@
+{
+  "name": "win-launcher",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "electron": "^39.0.0",
+    "electron-store": "^11.0.2",
+    "fuse.js": "^7.1.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron-builder": "^26.0.12"
+  }
+}

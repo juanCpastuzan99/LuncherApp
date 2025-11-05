@@ -1,0 +1,91 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+dist-electron/
+build/
+*.exe
+*.msi
+*.dmg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache/
+.quokka/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# User data
+AppData/
+Documents/
+Desktop/
+Downloads/
+Pictures/
+Videos/
+Music/
+OneDrive/
+Saved Games/
+Favorites/
+Links/
+Searches/
+Recent/
+
+# Windows specific
+NTUSER.DAT*
+ntuser.dat*
+*.regtrans-ms
+*.blf
+*.TMContainer*
+
+# Application specific
+.config/
+.ssh/
+.packettracer/
+.zenmap/
+.rest-client/
+.console-ninja/
+.cursor/
+.docker/
+.gemini/
+.pkg-cache/
+.codeium/
+
+# Cisco/GNS3
+Cisco Packet Tracer*/
+GNS3/
+IdeaProjects/
+PycharmProjects/
+
+# Electron
+*.asar
+
+# Package locks (optional - some prefer to commit these)
+# package-lock.json
+
