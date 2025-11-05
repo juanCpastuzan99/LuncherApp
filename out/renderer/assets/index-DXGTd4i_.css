@@ -1,0 +1,641 @@
+/* Tema Oscuro (Default) */
+:root,
+.theme-dark {
+  color-scheme: dark;
+  --bg: rgba(15, 15, 20, 0.7);
+  --panel: rgba(20, 20, 28, 0.85);
+  --text: #e6e6e6;
+  --muted: #a0a0ad;
+  --accent: #7aa2f7;
+  --accent-2: #9ece6a;
+  --border: rgba(255, 255, 255, 0.12);
+  --hover-bg: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(0, 0, 0, 0.2);
+}
+
+/* Tema Claro */
+.theme-light {
+  color-scheme: light;
+  --bg: rgba(240, 240, 245, 0.9);
+  --panel: rgba(255, 255, 255, 0.95);
+  --text: #1a1a1f;
+  --muted: #6b6b75;
+  --accent: #4a90e2;
+  --accent-2: #5cb85c;
+  --border: rgba(0, 0, 0, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.8);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--text);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel {
+  width: 720px;
+  max-width: 92vw;
+  max-height: 90vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  backdrop-filter: blur(20px) saturate(120%);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.search-container {
+  display: flex !important;
+  gap: 8px;
+  margin: 12px;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  flex-shrink: 0;
+  background: var(--panel);
+  padding: 4px 0;
+  margin-bottom: 8px;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.search {
+  flex: 1;
+  padding: 14px 16px;
+  font-size: 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+.settings-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.settings-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.settings-btn:active {
+  transform: scale(0.95);
+}
+
+.results {
+  list-style: none;
+  margin: 8px 8px 6px 8px;
+  flex-shrink: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.item {
+  padding: 10px 12px;
+  margin: 6px;
+  border-radius: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.item:hover, .item.active {
+  background: var(--hover-bg);
+  border-color: var(--accent);
+}
+
+.app-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.app-icon-placeholder {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: var(--hover-bg);
+  border-radius: 4px;
+}
+
+.item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.name { 
+  flex: 1; 
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path { 
+  color: var(--muted); 
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footer {
+  padding: 8px 12px 12px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.no-results {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.no-results p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.no-results .hint {
+  font-size: 12px;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+
+/* SearchBar styles - ya incluidos en styles.css principal */
+
+/* ResultsList styles - ya incluidos en styles.css principal */
+
+/* Footer styles - ya incluidos en styles.css principal */
+
+.calc-result {
+  padding: 20px 16px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.15) 0%, rgba(33, 150, 243, 0.05) 100%);
+  border-radius: 8px;
+  margin: 0 12px 12px 12px;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  animation: fadeIn 0.15s ease-in-out;
+  flex-shrink: 0;
+}
+
+.calc-result.calculator-mode {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(33, 150, 243, 0.15) 100%);
+  border-color: rgba(76, 175, 80, 0.4);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.calc-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.calc-icon {
+  font-size: 16px;
+}
+
+.calc-label {
+  font-size: 11px;
+}
+
+.calc-expression {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 8px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  word-break: break-all;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  min-height: 24px;
+}
+
+.calc-equals {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 4px 0;
+  font-weight: bold;
+}
+
+.calc-value {
+  font-size: 36px;
+  font-weight: bold;
+  color: #4CAF50;
+  margin-bottom: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  text-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.calc-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.convert-result {
+  padding: 20px 16px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.15) 0%, rgba(33, 150, 243, 0.05) 100%);
+  border-radius: 8px;
+  margin: 0 12px 12px 12px;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  animation: fadeIn 0.15s ease-in-out;
+  flex-shrink: 0;
+}
+
+.convert-equation {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.convert-value {
+  font-size: 32px;
+  font-weight: bold;
+  color: #2196F3;
+  margin-bottom: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.convert-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.smart-suggestions {
+  flex-shrink: 0;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.05);
+  margin-top: 8px;
+  transition: opacity 0.15s ease-in-out;
+  animation: fadeIn 0.15s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.suggestions-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 8px 16px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.suggestions-icon {
+  font-size: 14px;
+}
+
+.suggestions-title {
+  flex: 1;
+}
+
+.suggestions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.suggestion-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  margin: 2px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.suggestion-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+.suggestion-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-left-color: #4CAF50;
+}
+
+.suggestion-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestion-item .app-name {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestion-item.active .app-name {
+  color: #ffffff;
+}
+
+.suggestion-reason {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.confidence-badge {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.suggestion-item.active .confidence-badge {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+}
+
+.pomodoro-timer {
+  padding: 20px 16px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.15) 0%, rgba(244, 67, 54, 0.05) 100%);
+  border-radius: 8px;
+  margin: 0 12px 12px 12px;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  animation: fadeIn 0.15s ease-in-out;
+  flex-shrink: 0; /* No permitir que se encoja */
+  order: 2; /* Asegurar que esté después del SearchBar */
+}
+
+.pomodoro-timer.idle {
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.15) 0%, rgba(158, 158, 158, 0.05) 100%);
+  border-color: rgba(158, 158, 158, 0.3);
+}
+
+.pomodoro-timer.working {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.1) 100%);
+  border-color: rgba(244, 67, 54, 0.4);
+}
+
+.pomodoro-timer.shortBreak,
+.pomodoro-timer.longBreak {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
+  border-color: rgba(76, 175, 80, 0.4);
+}
+
+.pomodoro-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.pomodoro-icon {
+  font-size: 16px;
+}
+
+.pomodoro-label {
+  font-size: 11px;
+}
+
+.pomodoro-time {
+  font-size: 48px;
+  font-weight: bold;
+  color: #F44336;
+  margin: 16px 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  text-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+}
+
+.pomodoro-timer.shortBreak .pomodoro-time,
+.pomodoro-timer.longBreak .pomodoro-time {
+  color: #4CAF50;
+  text-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.pomodoro-progress {
+  width: 100%;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.pomodoro-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #F44336 0%, #FF5722 100%);
+  transition: width 1s linear;
+  border-radius: 2px;
+}
+
+.pomodoro-timer.shortBreak .pomodoro-progress-bar,
+.pomodoro-timer.longBreak .pomodoro-progress-bar {
+  background: linear-gradient(90deg, #4CAF50 0%, #66BB6A 100%);
+}
+
+.pomodoro-stats {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  margin: 12px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  gap: 8px;
+}
+
+.pomodoro-total {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.pomodoro-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.pomodoro-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: white;
+  min-width: 80px;
+}
+
+.pomodoro-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pomodoro-btn:active {
+  transform: translateY(0);
+}
+
+.pomodoro-btn.start,
+.pomodoro-btn.resume {
+  background: #4CAF50;
+}
+
+.pomodoro-btn.start:hover,
+.pomodoro-btn.resume:hover {
+  background: #66BB6A;
+}
+
+.pomodoro-btn.pause {
+  background: #FF9800;
+}
+
+.pomodoro-btn.pause:hover {
+  background: #FFB74D;
+}
+
+.pomodoro-btn.stop {
+  background: #F44336;
+}
+
+.pomodoro-btn.stop:hover {
+  background: #EF5350;
+}
+
+.pomodoro-btn.reset {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.pomodoro-btn.reset:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Launcher component styles - ya incluidos en styles.css principal */
+

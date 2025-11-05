@@ -9,7 +9,10 @@ export type CommandType =
   | 'launch' 
   | 'window_management' 
   | 'calculate' 
+  | 'convert'
   | 'search' 
+  | 'educational'
+  | 'pomodoro'
   | 'unknown';
 
 export interface ParsedCommand {
@@ -17,6 +20,10 @@ export interface ParsedCommand {
   action?: string;
   target?: string;
   query?: string;
+  from?: string;
+  to?: string;
+  value?: number;
+  subject?: string;
   confidence: number;
 }
 
@@ -67,6 +74,7 @@ const CALC_KEYWORDS = ['calcula', 'calculate', 'calc', '=', 'cuánto', 'cuanto']
  */
 export function parseCommand(query: string): ParsedCommand {
   const lowerQuery = query.toLowerCase().trim();
+  const originalQuery = query.trim();
   
   // Comando de gestión de ventanas
   const windowCommand = detectWindowCommand(lowerQuery);
@@ -74,10 +82,29 @@ export function parseCommand(query: string): ParsedCommand {
     return windowCommand;
   }
   
-  // Comando de cálculo
-  const calcCommand = detectCalcCommand(lowerQuery);
+  // Comando de cálculo (prioritario si empieza con número o función matemática)
+  // Usar query original para preservar mayúsculas en funciones como sin, cos, etc.
+  const calcCommand = detectCalcCommand(originalQuery);
   if (calcCommand) {
     return calcCommand;
+  }
+  
+  // Comando de conversión de unidades
+  const convertCommand = detectConvertCommand(lowerQuery);
+  if (convertCommand) {
+    return convertCommand;
+  }
+  
+  // Comando educativo (Wikipedia, búsqueda educativa)
+  const educationalCommand = detectEducationalCommand(lowerQuery);
+  if (educationalCommand) {
+    return educationalCommand;
+  }
+  
+  // Comando Pomodoro
+  const pomodoroCommand = detectPomodoroCommand(lowerQuery);
+  if (pomodoroCommand) {
+    return pomodoroCommand;
   }
   
   // Comando de búsqueda web
@@ -165,8 +192,18 @@ function detectWindowCommand(query: string): ParsedCommand | null {
 function detectCalcCommand(query: string): ParsedCommand | null {
   // Patrones: "calcula 2+2", "2 * 5", "cuánto es 10% de 200"
   const calcPattern = /(calcula|calculate|calc|cu[áa]nto|cuanto)\s+(?:es\s+)?([\d+\-*/().%\s]+)/i;
-  const simpleCalcPattern = /^[\d+\-*/().%\s]+$/;
   
+  // Patrón mejorado: detecta expresiones que empiezan con número u operador matemático
+  // Permite: números, operadores, paréntesis, funciones matemáticas, espacios
+  const startsWithNumberPattern = /^[\d+\-*/().%\s]+$/;
+  
+  // Patrón para expresiones que empiezan con número seguido de operador o espacio
+  const startsWithNumberAndOperator = /^\s*[\d+\-*/().%\s]+$/;
+  
+  // Patrón para funciones matemáticas comunes (sin, cos, sqrt, etc.)
+  const mathFunctionPattern = /^(sin|cos|tan|ln|log|sqrt|exp|pow)\s*\(/i;
+  
+  // Si empieza con palabra clave de cálculo
   if (calcPattern.test(query)) {
     const match = query.match(calcPattern);
     if (match && match[2]) {
@@ -178,12 +215,37 @@ function detectCalcCommand(query: string): ParsedCommand | null {
     }
   }
   
-  if (simpleCalcPattern.test(query)) {
+  // Si empieza con función matemática
+  if (mathFunctionPattern.test(query.trim())) {
     return {
       type: 'calculate',
       query: query.trim(),
-      confidence: 0.7
+      confidence: 0.85
     };
+  }
+  
+  // Si es una expresión matemática pura (solo números y operadores)
+  if (startsWithNumberPattern.test(query)) {
+    return {
+      type: 'calculate',
+      query: query.trim(),
+      confidence: 0.8
+    };
+  }
+  
+  // Si empieza con número seguido de operador o espacio (pero no es conversión)
+  // Verificar que no sea una conversión de unidades primero
+  const trimmed = query.trim();
+  if (/^\d+/.test(trimmed) && /^[\d+\-*/().%\s]+$/.test(trimmed)) {
+    // Verificar que no sea una conversión (no tiene palabras como "km", "a", "to", etc.)
+    const hasUnitKeywords = /\b(km|metros|kilogramos|kg|gramos|libra|onza|celsius|fahrenheit|kelvin|a|to|en)\b/i.test(trimmed);
+    if (!hasUnitKeywords) {
+      return {
+        type: 'calculate',
+        query: trimmed,
+        confidence: 0.75
+      };
+    }
   }
   
   return null;
@@ -232,12 +294,158 @@ function detectLaunchCommand(query: string): ParsedCommand | null {
 }
 
 /**
- * Evalúa una expresión matemática de forma segura
+ * Detecta comandos de conversión de unidades
+ */
+function detectConvertCommand(query: string): ParsedCommand | null {
+  // Patrones: "convertir 100 km a millas", "100 USD a EUR", "convert 5 metros a pies", "100 km millas"
+  const convertPatterns = [
+    {
+      regex: /convertir?\s+(\d+(?:\.\d+)?)\s+(\w+(?:\s+\w+)?)\s+(?:a|to|en)\s+(\w+(?:\s+\w+)?)/i,
+      confidence: 0.9
+    },
+    {
+      regex: /(\d+(?:\.\d+)?)\s+(\w+(?:\s+\w+)?)\s+(?:a|to|en)\s+(\w+(?:\s+\w+)?)/i,
+      confidence: 0.8
+    },
+    {
+      regex: /(\d+(?:\.\d+)?)\s+(\w+)\s+(\w+)/i,
+      confidence: 0.6
+    }
+  ];
+  
+  for (const pattern of convertPatterns) {
+    const match = query.match(pattern.regex);
+    if (match && match[1] && match[2] && match[3]) {
+      // Normalizar unidades (eliminar espacios extra, convertir a minúsculas)
+      const from = match[2].trim().toLowerCase().replace(/\s+/g, ' ');
+      const to = match[3].trim().toLowerCase().replace(/\s+/g, ' ');
+      
+      return {
+        type: 'convert',
+        value: parseFloat(match[1]),
+        from,
+        to,
+        confidence: pattern.confidence
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos educativos (Wikipedia, búsqueda educativa)
+ */
+function detectEducationalCommand(query: string): ParsedCommand | null {
+  // Patrones: "wikipedia: fotosíntesis", "buscar en wikipedia: Einstein"
+  const wikiPattern = /(?:wikipedia|wiki)\s*:?\s*(.+)/i;
+  const educationalPattern = /(?:buscar|search)\s+(?:en\s+)?(?:wikipedia|wiki|educación|educativo)\s*:?\s*(.+)/i;
+  
+  if (wikiPattern.test(query)) {
+    const match = query.match(wikiPattern);
+    if (match && match[1]) {
+      return {
+        type: 'educational',
+        action: 'wikipedia',
+        query: match[1].trim(),
+        confidence: 0.9
+      };
+    }
+  }
+  
+  if (educationalPattern.test(query)) {
+    const match = query.match(educationalPattern);
+    if (match && match[1]) {
+      return {
+        type: 'educational',
+        action: 'wikipedia',
+        query: match[1].trim(),
+        confidence: 0.8
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos Pomodoro
+ */
+function detectPomodoroCommand(query: string): ParsedCommand | null {
+  // Patrones: "pomodoro", "iniciar pomodoro", "pausar pomodoro", "detener pomodoro", "resetear pomodoro"
+  const pomodoroPattern = /^(pomodoro|pomo)\s*(start|iniciar|comenzar|pause|pausar|stop|detener|reset|resetear|break|descanso)?$/i;
+  
+  const match = query.match(pomodoroPattern);
+  if (match) {
+    const action = match[2]?.toLowerCase() || 'start';
+    
+    let finalAction = 'start';
+    if (action === 'pause' || action === 'pausar') {
+      finalAction = 'pause';
+    } else if (action === 'stop' || action === 'detener') {
+      finalAction = 'stop';
+    } else if (action === 'reset' || action === 'resetear') {
+      finalAction = 'reset';
+    } else if (action === 'break' || action === 'descanso') {
+      finalAction = 'break';
+    }
+    
+    return {
+      type: 'pomodoro',
+      action: finalAction,
+      confidence: 0.9
+    };
+  }
+  
+  // Patrones más específicos
+  const specificPatterns = [
+    { regex: /^(iniciar|start|comenzar)\s+(pomodoro|pomo)$/i, action: 'start' },
+    { regex: /^(pausar|pause)\s+(pomodoro|pomo)$/i, action: 'pause' },
+    { regex: /^(detener|stop|parar)\s+(pomodoro|pomo)$/i, action: 'stop' },
+    { regex: /^(resetear|reset)\s+(pomodoro|pomo)$/i, action: 'reset' },
+    { regex: /^(descanso|break)\s+(pomodoro|pomo)$/i, action: 'break' }
+  ];
+  
+  for (const pattern of specificPatterns) {
+    if (pattern.regex.test(query)) {
+      return {
+        type: 'pomodoro',
+        action: pattern.action,
+        confidence: 0.95
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Evalúa una expresión matemática de forma segura con funciones científicas
  */
 export function evaluateMath(expression: string): number | null {
   try {
-    // Limpiar la expresión (remover caracteres no permitidos)
-    const clean = expression.replace(/[^0-9+\-*/().%\s]/g, '');
+    // Reemplazar funciones matemáticas comunes
+    let processed = expression
+      .replace(/\bsin\s*\(/gi, 'Math.sin(')
+      .replace(/\bcos\s*\(/gi, 'Math.cos(')
+      .replace(/\btan\s*\(/gi, 'Math.tan(')
+      .replace(/\bln\s*\(/gi, 'Math.log(')
+      .replace(/\blog\s*\(/gi, 'Math.log10(')
+      .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(')
+      .replace(/\bexp\s*\(/gi, 'Math.exp(')
+      .replace(/\bpi\b/gi, 'Math.PI')
+      .replace(/\be\b/g, 'Math.E')
+      .replace(/\bpow\s*\(/gi, 'Math.pow(');
+    
+    // Convertir grados a radianes para funciones trigonométricas
+    processed = processed.replace(/sin|cos|tan/i, (match) => {
+      // Detectar si hay "grados" o "degrees" después
+      return match;
+    });
+    
+    // Limpiar la expresión (remover caracteres no permitidos excepto Math y funciones)
+    // Permitir: números, operadores, paréntesis, Math, funciones matemáticas
+    const clean = processed.replace(/[^0-9+\-*/().%\sMath\w\.()]/g, '');
     
     // Reemplazar % por /100
     const withPercent = clean.replace(/(\d+)%/g, '($1/100)');
@@ -265,4 +473,5 @@ export function formatCalcResult(result: number): string {
   }
   return result.toString();
 }
+
 
