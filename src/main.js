@@ -17,7 +17,7 @@ let mainWindow = null;
 let settingsWindow = null;
 let appIndex = [];
 let config = {
-  hotkey: 'Ctrl+Space',
+  hotkey: 'Ctrl+Alt+Space',
   theme: 'dark',
   transparency: true,
   excludePatterns: ['uninstall', 'help', 'documentation'],
@@ -682,6 +682,7 @@ function createWindow() {
   });
 }
 
+// ===== FIX PRINCIPAL: Registrar hotkey del launcher =====
 function registerHotkey() {
   // Asegurar que la ventana esté creada
   if (!mainWindow) {
@@ -690,29 +691,33 @@ function registerHotkey() {
     return;
   }
   
-  globalShortcut.unregisterAll();
-  
   const handleHotkey = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    console.log('🔔 Hotkey presionado!');
+    console.log('🔔 Hotkey presionado: Ctrl+Alt+Space');
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
-      // center on primary display
+      // Centrar en pantalla primaria
       mainWindow.center();
-      mainWindow.showInactive();
+      mainWindow.show(); // CAMBIO: usar show() en lugar de showInactive()
       mainWindow.focus();
       mainWindow.webContents.send('focus-search');
     }
   };
   
-  // Intentar diferentes variaciones del hotkey
+  // Primero desregistrar solo las variaciones del hotkey principal
   const hotkeyVariations = [
-    config.hotkey,
-    config.hotkey.replace('Ctrl', 'CommandOrControl'), // Windows usa CommandOrControl
-    'Ctrl+Alt+Space', // Alternativa si Ctrl+Space falla
-    'CommandOrControl+Alt+Space'
+    'Ctrl+Alt+Space',
+    'CommandOrControl+Alt+Space',
+    'Control+Alt+Space'
   ];
+  
+  hotkeyVariations.forEach(hk => {
+    if (globalShortcut.isRegistered(hk)) {
+      globalShortcut.unregister(hk);
+      console.log(`🔓 Desregistrado: ${hk}`);
+    }
+  });
   
   let registered = false;
   let workingHotkey = null;
@@ -727,26 +732,22 @@ function registerHotkey() {
       console.log(`✅ Hotkey registrado exitosamente: ${hotkey}`);
       registered = true;
       workingHotkey = hotkey;
-      
-      // Actualizar config si es diferente
-      if (hotkey !== config.hotkey) {
-        console.log(`📝 Actualizando hotkey de '${config.hotkey}' a '${hotkey}'`);
-        saveConfig({ hotkey: hotkey });
-        config.hotkey = hotkey;
-      }
     } else {
       console.warn(`❌ No se pudo registrar: ${hotkey}`);
     }
   }
   
   if (!registered) {
-    console.error('❌ ERROR: No se pudo registrar ningún hotkey. La aplicación seguirá funcionando pero sin atajo de teclado.');
-    console.log('💡 Puedes abrir la aplicación desde el menú o cambiar el hotkey en Configuración.');
+    console.error('❌ ERROR: No se pudo registrar ningún hotkey.');
+    console.log('💡 Posibles soluciones:');
+    console.log('   1. Otra aplicación está usando Ctrl+Alt+Space');
+    console.log('   2. Intenta cerrar otras apps y reiniciar');
+    console.log('   3. Puedes cambiar el hotkey en Configuración');
+  } else {
+    // Verificar que el hotkey esté registrado
+    const isRegistered = globalShortcut.isRegistered(workingHotkey);
+    console.log(`🔍 Verificación: Hotkey ${workingHotkey} está registrado: ${isRegistered}`);
   }
-  
-  // Verificar que el hotkey esté registrado
-  const isRegistered = globalShortcut.isRegistered(workingHotkey || config.hotkey);
-  console.log(`🔍 Verificación: Hotkey ${workingHotkey || config.hotkey} está registrado: ${isRegistered}`);
 }
 
 // Registrar hotkeys para window management estilo Hyprland
@@ -755,28 +756,31 @@ function registerWindowHotkeys() {
   
   // Tile Grid
   if (hotkeys.tileGrid) {
-    globalShortcut.register(hotkeys.tileGrid, () => {
+    const ok = globalShortcut.register(hotkeys.tileGrid, () => {
       windowManager.tileWindows('grid');
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.tileGrid} (Tile Grid)`);
   }
   
   // Tile Vertical
   if (hotkeys.tileVertical) {
-    globalShortcut.register(hotkeys.tileVertical, () => {
+    const ok = globalShortcut.register(hotkeys.tileVertical, () => {
       windowManager.tileWindows('vertical');
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.tileVertical} (Tile Vertical)`);
   }
   
   // Tile Horizontal
   if (hotkeys.tileHorizontal) {
-    globalShortcut.register(hotkeys.tileHorizontal, () => {
+    const ok = globalShortcut.register(hotkeys.tileHorizontal, () => {
       windowManager.tileWindows('horizontal');
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.tileHorizontal} (Tile Horizontal)`);
   }
   
   // Mover ventana a la izquierda (o cambiar workspace si está en el borde)
   if (hotkeys.moveLeft) {
-    globalShortcut.register(hotkeys.moveLeft, async () => {
+    const ok = globalShortcut.register(hotkeys.moveLeft, async () => {
       const activeWindow = await windowManager.getActiveWindow();
       if (activeWindow) {
         // Si la ventana ya está en el lado izquierdo, cambiar workspace
@@ -788,11 +792,12 @@ function registerWindowHotkeys() {
         }
       }
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.moveLeft} (Move Left)`);
   }
   
   // Mover ventana a la derecha (o cambiar workspace si está en el borde)
   if (hotkeys.moveRight) {
-    globalShortcut.register(hotkeys.moveRight, async () => {
+    const ok = globalShortcut.register(hotkeys.moveRight, async () => {
       const activeWindow = await windowManager.getActiveWindow();
       if (activeWindow) {
         // Si la ventana ya está en el lado derecho, cambiar workspace
@@ -804,44 +809,50 @@ function registerWindowHotkeys() {
         }
       }
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.moveRight} (Move Right)`);
   }
   
   // Centrar ventana
   if (hotkeys.center) {
-    globalShortcut.register(hotkeys.center, () => {
+    const ok = globalShortcut.register(hotkeys.center, () => {
       windowManager.centerActiveWindow();
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.center} (Center)`);
   }
   
   // Maximizar
   if (hotkeys.maximize) {
-    globalShortcut.register(hotkeys.maximize, () => {
+    const ok = globalShortcut.register(hotkeys.maximize, () => {
       windowManager.maximizeActiveWindow();
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.maximize} (Maximize)`);
   }
   
   // Minimizar
   if (hotkeys.minimize) {
-    globalShortcut.register(hotkeys.minimize, () => {
+    const ok = globalShortcut.register(hotkeys.minimize, () => {
       windowManager.minimizeActiveWindow();
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.minimize} (Minimize)`);
   }
   
   // Workspace siguiente (opcional, también funciona con moveRight)
   if (hotkeys.workspaceNext && hotkeys.workspaceNext !== hotkeys.moveRight) {
-    globalShortcut.register(hotkeys.workspaceNext, () => {
+    const ok = globalShortcut.register(hotkeys.workspaceNext, () => {
       windowManager.switchVirtualDesktop('next');
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.workspaceNext} (Workspace Next)`);
   }
   
   // Workspace anterior (opcional, también funciona con moveLeft)
   if (hotkeys.workspacePrev && hotkeys.workspacePrev !== hotkeys.moveLeft) {
-    globalShortcut.register(hotkeys.workspacePrev, () => {
+    const ok = globalShortcut.register(hotkeys.workspacePrev, () => {
       windowManager.switchVirtualDesktop('previous');
     });
+    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.workspacePrev} (Workspace Prev)`);
   }
   
-  console.log('✓ Hotkeys de window management registrados');
+  console.log('✓ Todos los hotkeys de window management procesados');
 }
 
 function launchItem(filePath, itemType) {
@@ -1108,20 +1119,21 @@ app.whenReady().then(() => {
     scanAllApps(); // Escanear todas las aplicaciones
     createWindow();
     
-    // Registrar hotkey después de que la ventana esté lista
+    // Registrar hotkeys después de que la ventana esté lista
     setTimeout(() => {
-      registerHotkey();
-      registerWindowHotkeys(); // Registrar hotkeys de window management
+      registerHotkey(); // Registrar primero el hotkey principal
+      registerWindowHotkeys(); // Luego los hotkeys de window management
+      
       console.log(`\n🎯 Aplicación iniciada correctamente.`);
-      console.log(`📌 Presiona ${config.hotkey} (o Ctrl+Alt+Space) para abrir/cerrar el launcher.\n`);
+      console.log(`📌 Presiona ${config.hotkey} (Ctrl+Alt+Space) para abrir/cerrar el launcher.\n`);
+      console.log('Hotkeys de window management disponibles:');
+      console.log('  - Ctrl+Alt+T: Organizar ventanas en grid');
+      console.log('  - Ctrl+Alt+Shift+T: Organizar verticalmente');
+      console.log('  - Ctrl+Alt+H: Organizar horizontalmente');
+      console.log('  - Ctrl+Alt+Left/Right: Mover ventana a lado / Cambiar workspace');
+      console.log('  - Ctrl+Alt+C: Centrar ventana');
+      console.log('  - Ctrl+Alt+Up/Down: Maximizar/Minimizar\n');
     }, 1000);
-    console.log('Hotkeys de window management disponibles:');
-    console.log('  - Ctrl+Alt+T: Organizar ventanas en grid');
-    console.log('  - Ctrl+Alt+Shift+T: Organizar verticalmente');
-    console.log('  - Ctrl+Alt+H: Organizar horizontalmente');
-    console.log('  - Ctrl+Alt+Left/Right: Mover ventana a lado / Cambiar workspace');
-    console.log('  - Ctrl+Alt+C: Centrar ventana');
-    console.log('  - Ctrl+Alt+Up/Down: Maximizar/Minimizar');
   } catch (error) {
     console.error('Error al iniciar la aplicación:', error);
   }
@@ -1166,5 +1178,3 @@ ipcMain.on('theme-changed', (_e, theme) => {
     mainWindow.webContents.send('theme-changed', theme);
   }
 });
-
-

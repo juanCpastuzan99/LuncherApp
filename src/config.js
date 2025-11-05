@@ -1,23 +1,17 @@
 /**
- * Módulo de configuración con persistencia usando electron-store
- * Guarda: favoritos, historial, hotkeys, tema, preferencias de UI
+ * Módulo de configuración con persistencia
+ * Compatible con desarrollo y producción
+ * Incluye: favoritos, historial, flashcards, notas, pomodoro, hotkeys, UI
+ * Fallback automático a fs si electron-store no está disponible
  */
 
-let Store;
-let store;
+const { app } = require('electron');
+const path = require('path');
+const fs = require('fs');
 
-// Inicializar store de forma asíncrona (electron-store es ES Module)
-async function initStore() {
-  if (!Store) {
-    const electronStore = await import('electron-store');
-    Store = electronStore.default;
-    store = new Store({
-      name: 'win11-launcher-config',
-      defaults: getDefaults()
-    });
-  }
-  return store;
-}
+// ============================================================================
+// CONFIGURACIÓN POR DEFECTO
+// ============================================================================
 
 function getDefaults() {
   return {
@@ -29,6 +23,15 @@ function getDefaults() {
     
     // Historial de aplicaciones lanzadas (últimas 20)
     launchHistory: [],
+    
+    // Tarjetas de estudio (Flashcards)
+    flashcards: [],
+    
+    // Notas educativas
+    notes: [],
+    
+    // Sesiones de estudio
+    studySessions: [],
     
     // Hotkeys personalizados
     hotkeys: {
@@ -45,12 +48,12 @@ function getDefaults() {
     
     // Preferencias de UI
     ui: {
-      theme: 'dark', // dark, light, auto
+      theme: 'dark',
       windowWidth: 720,
       windowHeight: 400,
       maxResults: 10,
       showPath: true,
-      animationSpeed: 'normal' // fast, normal, slow
+      animationSpeed: 'normal'
     },
     
     // Configuración de escaneo
@@ -59,7 +62,7 @@ function getDefaults() {
       includeRegistry: true,
       includeLocalApps: true,
       includeStartMenu: true,
-      scanInterval: 3600000 // 1 hora en ms
+      scanInterval: 3600000
     },
     
     // Configuración de ventanas
@@ -67,187 +70,679 @@ function getDefaults() {
       gap: 10,
       enableTiling: true,
       enableFloating: true,
-      defaultLayout: 'grid' // grid, vertical, horizontal
+      defaultLayout: 'grid'
+    },
+    
+    // Estado del Pomodoro
+    pomodoro: {
+      state: 'idle',
+      timeRemaining: 0,
+      currentPomodoro: 0,
+      totalPomodoros: 0,
+      phase: 'work',
+      startedAt: null,
+      pausedAt: null,
+      pausedDuration: 0,
+      // Configuración de tiempos (en segundos)
+      workDuration: 25 * 60,
+      shortBreakDuration: 5 * 60,
+      longBreakDuration: 15 * 60,
+      pomodorosUntilLongBreak: 4
     }
   };
 }
 
+// ============================================================================
+// STORAGE BACKEND
+// ============================================================================
+
+class StorageBackend {
+  constructor() {
+    this.useElectronStore = false;
+    this.store = null;
+    this.configPath = null;
+    this.config = getDefaults();
+    this.initialized = false;
+  }
+  
+  async init() {
+    if (this.initialized) return;
+    
+    try {
+      const electronStore = await import('electron-store');
+      this.store = new electronStore.default({
+        name: 'win11-launcher-config',
+        defaults: getDefaults(),
+        clearInvalidConfig: true
+      });
+      this.useElectronStore = true;
+      this.config = this.store.store;
+      console.log('✅ Using electron-store');
+    } catch (error) {
+      console.warn('⚠️ Fallback to fs');
+      this.useElectronStore = false;
+      this.setupFsBackend();
+      this.loadFromFs();
+    }
+    
+    this.initialized = true;
+  }
+  
+  setupFsBackend() {
+    try {
+      const userDataPath = app.getPath('userData');
+      this.configPath = path.join(userDataPath, 'config.json');
+      
+      if (!fs.existsSync(userDataPath)) {
+        fs.mkdirSync(userDataPath, { recursive: true });
+      }
+    } catch (error) {
+      console.error('Error setup fs:', error);
+      this.configPath = path.join(app.getPath('temp'), 'win11-launcher-config.json');
+    }
+  }
+  
+  loadFromFs() {
+    try {
+      if (fs.existsSync(this.configPath)) {
+        const data = fs.readFileSync(this.configPath, 'utf-8');
+        const parsed = JSON.parse(data);
+        this.config = this.deepMerge(getDefaults(), parsed);
+        console.log('✅ Config loaded from fs');
+      } else {
+        this.config = getDefaults();
+        this.saveToFs();
+      }
+    } catch (error) {
+      console.error('Error loading config:', error);
+      this.config = getDefaults();
+    }
+  }
+  
+  saveToFs() {
+    try {
+      const data = JSON.stringify(this.config, null, 2);
+      fs.writeFileSync(this.configPath, data, 'utf-8');
+      return true;
+    } catch (error) {
+      console.error('Error saving config:', error);
+      return false;
+    }
+  }
+  
+  deepMerge(target, source) {
+    const output = { ...target };
+    
+    for (const key in source) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        output[key] = this.deepMerge(target[key] || {}, source[key]);
+      } else {
+        output[key] = source[key];
+      }
+    }
+    
+    return output;
+  }
+  
+  get(key, defaultValue) {
+    if (!this.initialized) return defaultValue;
+    
+    if (this.useElectronStore) {
+      return this.store.get(key, defaultValue);
+    }
+    
+    const keys = key.split('.');
+    let value = this.config;
+    
+    for (const k of keys) {
+      if (value && typeof value === 'object' && k in value) {
+        value = value[k];
+      } else {
+        return defaultValue;
+      }
+    }
+    
+    return value !== undefined ? value : defaultValue;
+  }
+  
+  set(key, value) {
+    if (!this.initialized) return false;
+    
+    if (this.useElectronStore) {
+      this.store.set(key, value);
+      return true;
+    }
+    
+    const keys = key.split('.');
+    let target = this.config;
+    
+    for (let i = 0; i < keys.length - 1; i++) {
+      const k = keys[i];
+      if (!(k in target) || typeof target[k] !== 'object') {
+        target[k] = {};
+      }
+      target = target[k];
+    }
+    
+    target[keys[keys.length - 1]] = value;
+    return this.saveToFs();
+  }
+  
+  getAll() {
+    if (this.useElectronStore) {
+      return this.store.store;
+    }
+    return { ...this.config };
+  }
+  
+  clear() {
+    if (this.useElectronStore) {
+      this.store.clear();
+    } else {
+      this.config = getDefaults();
+      this.saveToFs();
+    }
+  }
+}
+
+// ============================================================================
+// CONFIG MANAGER
+// ============================================================================
+
 class ConfigManager {
   constructor() {
-    this._storeReady = false;
-    this._initPromise = null;
+    this.storage = new StorageBackend();
+    this.initPromise = null;
+    this.ready = false;
   }
   
-  async _ensureStore() {
-    if (!this._storeReady) {
-      if (!this._initPromise) {
-        this._initPromise = initStore().then(s => {
-          store = s;
-          this._storeReady = true;
-          return s;
-        });
-      }
-      await this._initPromise;
+  async init() {
+    if (this.ready) return;
+    
+    if (!this.initPromise) {
+      this.initPromise = this.storage.init().then(() => {
+        this.ready = true;
+        console.log('✅ ConfigManager ready');
+      }).catch(error => {
+        console.error('❌ ConfigManager failed:', error);
+        this.ready = true;
+      });
     }
-    return store;
+    
+    return this.initPromise;
   }
   
-  _getStoreSync() {
-    if (!this._storeReady) {
-      throw new Error('Store not initialized. Call async method first or use sync methods after init.');
+  _ensureReady() {
+    if (!this.ready) {
+      console.warn('ConfigManager not ready');
     }
-    return store;
   }
-  // Favoritos
+  
+  // ==========================================================================
+  // FAVORITOS
+  // ==========================================================================
+  
   addFavorite(appId) {
+    this._ensureReady();
+    if (!appId || typeof appId !== 'string') return false;
+    
     const favorites = this.getFavorites();
     if (!favorites.includes(appId)) {
       favorites.push(appId);
-      this._getStoreSync().set('favorites', favorites);
+      return this.storage.set('favorites', favorites);
     }
+    return true;
   }
   
   removeFavorite(appId) {
+    this._ensureReady();
     const favorites = this.getFavorites();
-    this._getStoreSync().set('favorites', favorites.filter(id => id !== appId));
+    return this.storage.set('favorites', favorites.filter(id => id !== appId));
   }
   
   getFavorites() {
-    return this._getStoreSync().get('favorites', []);
+    this._ensureReady();
+    const favorites = this.storage.get('favorites', []);
+    return Array.isArray(favorites) ? favorites : [];
   }
   
   isFavorite(appId) {
     return this.getFavorites().includes(appId);
   }
   
-  // Historial de búsqueda
+  // ==========================================================================
+  // HISTORIAL DE BÚSQUEDA
+  // ==========================================================================
+  
   addSearchHistory(query) {
-    if (!query || query.trim().length === 0) return;
+    this._ensureReady();
+    if (!query || typeof query !== 'string' || query.trim().length < 2) return false;
+    
+    const trimmed = query.trim();
+    if (trimmed.length > 100) return false;
     
     const history = this.getSearchHistory();
-    // Eliminar duplicados
-    const filtered = history.filter(h => h.toLowerCase() !== query.toLowerCase());
-    // Agregar al inicio
-    filtered.unshift(query.trim());
-    // Limitar a 50
-    const limited = filtered.slice(0, 50);
-    this._getStoreSync().set('searchHistory', limited);
+    const filtered = history.filter(h => h.toLowerCase() !== trimmed.toLowerCase());
+    filtered.unshift(trimmed);
+    
+    return this.storage.set('searchHistory', filtered.slice(0, 50));
   }
   
   getSearchHistory() {
-    return this._getStoreSync().get('searchHistory', []);
+    this._ensureReady();
+    const history = this.storage.get('searchHistory', []);
+    return Array.isArray(history) ? history : [];
   }
   
   clearSearchHistory() {
-    this._getStoreSync().set('searchHistory', []);
+    this._ensureReady();
+    return this.storage.set('searchHistory', []);
   }
   
-  // Historial de lanzamientos
+  // ==========================================================================
+  // HISTORIAL DE LANZAMIENTOS
+  // ==========================================================================
+  
   addLaunchHistory(app) {
+    this._ensureReady();
+    if (!app || !app.id || !app.name) return false;
+    
     const history = this.getLaunchHistory();
-    // Eliminar duplicados del mismo app
     const filtered = history.filter(h => h.id !== app.id);
-    // Agregar al inicio
+    
     filtered.unshift({
       id: app.id,
       name: app.name,
-      path: app.path,
+      path: app.path || '',
       timestamp: Date.now()
     });
-    // Limitar a 20
-    const limited = filtered.slice(0, 20);
-    this._getStoreSync().set('launchHistory', limited);
+    
+    return this.storage.set('launchHistory', filtered.slice(0, 20));
   }
   
   getLaunchHistory() {
-    return this._getStoreSync().get('launchHistory', []);
+    this._ensureReady();
+    const history = this.storage.get('launchHistory', []);
+    return Array.isArray(history) ? history : [];
   }
   
   clearLaunchHistory() {
-    this._getStoreSync().set('launchHistory', []);
+    this._ensureReady();
+    return this.storage.set('launchHistory', []);
   }
   
-  // Hotkeys
+  getMostUsed(limit = 5) {
+    const history = this.getLaunchHistory();
+    const frequency = {};
+    
+    history.forEach(entry => {
+      frequency[entry.id] = (frequency[entry.id] || 0) + 1;
+    });
+    
+    return Object.entries(frequency)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([id]) => history.find(h => h.id === id));
+  }
+  
+  // ==========================================================================
+  // FLASHCARDS (Tarjetas de Estudio)
+  // ==========================================================================
+  
+  getFlashcards() {
+    this._ensureReady();
+    const flashcards = this.storage.get('flashcards', []);
+    return Array.isArray(flashcards) ? flashcards : [];
+  }
+  
+  addFlashcard(flashcard) {
+    this._ensureReady();
+    if (!flashcard || !flashcard.question || !flashcard.answer) {
+      return false;
+    }
+    
+    const flashcards = this.getFlashcards();
+    const newCard = {
+      id: Date.now().toString(),
+      question: flashcard.question,
+      answer: flashcard.answer,
+      category: flashcard.category || 'general',
+      difficulty: flashcard.difficulty || 'medium',
+      tags: flashcard.tags || [],
+      createdAt: Date.now(),
+      lastReviewed: null,
+      reviewCount: 0,
+      correctCount: 0,
+      ...flashcard
+    };
+    
+    flashcards.push(newCard);
+    return this.storage.set('flashcards', flashcards);
+  }
+  
+  updateFlashcard(id, updates) {
+    this._ensureReady();
+    if (!id || !updates) return false;
+    
+    const flashcards = this.getFlashcards();
+    const index = flashcards.findIndex(card => card.id === id);
+    
+    if (index === -1) return false;
+    
+    flashcards[index] = { ...flashcards[index], ...updates };
+    return this.storage.set('flashcards', flashcards);
+  }
+  
+  deleteFlashcard(id) {
+    this._ensureReady();
+    const flashcards = this.getFlashcards();
+    return this.storage.set('flashcards', flashcards.filter(card => card.id !== id));
+  }
+  
+  recordFlashcardReview(id, correct) {
+    this._ensureReady();
+    const flashcards = this.getFlashcards();
+    const index = flashcards.findIndex(card => card.id === id);
+    
+    if (index === -1) return false;
+    
+    flashcards[index].lastReviewed = Date.now();
+    flashcards[index].reviewCount = (flashcards[index].reviewCount || 0) + 1;
+    
+    if (correct) {
+      flashcards[index].correctCount = (flashcards[index].correctCount || 0) + 1;
+    }
+    
+    return this.storage.set('flashcards', flashcards);
+  }
+  
+  // ==========================================================================
+  // NOTAS EDUCATIVAS
+  // ==========================================================================
+  
+  getNotes() {
+    this._ensureReady();
+    const notes = this.storage.get('notes', []);
+    return Array.isArray(notes) ? notes : [];
+  }
+  
+  addNote(note) {
+    this._ensureReady();
+    if (!note || !note.title || !note.content) {
+      return false;
+    }
+    
+    const notes = this.getNotes();
+    const newNote = {
+      id: Date.now().toString(),
+      title: note.title,
+      content: note.content,
+      category: note.category || 'general',
+      tags: note.tags || [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...note
+    };
+    
+    notes.push(newNote);
+    return this.storage.set('notes', notes);
+  }
+  
+  updateNote(id, updates) {
+    this._ensureReady();
+    if (!id || !updates) return false;
+    
+    const notes = this.getNotes();
+    const index = notes.findIndex(note => note.id === id);
+    
+    if (index === -1) return false;
+    
+    notes[index] = {
+      ...notes[index],
+      ...updates,
+      updatedAt: Date.now()
+    };
+    
+    return this.storage.set('notes', notes);
+  }
+  
+  deleteNote(id) {
+    this._ensureReady();
+    const notes = this.getNotes();
+    return this.storage.set('notes', notes.filter(note => note.id !== id));
+  }
+  
+  // ==========================================================================
+  // SESIONES DE ESTUDIO
+  // ==========================================================================
+  
+  getStudySessions() {
+    this._ensureReady();
+    const sessions = this.storage.get('studySessions', []);
+    return Array.isArray(sessions) ? sessions : [];
+  }
+  
+  addStudySession(session) {
+    this._ensureReady();
+    if (!session || !session.duration) {
+      return false;
+    }
+    
+    const sessions = this.getStudySessions();
+    const newSession = {
+      id: Date.now().toString(),
+      duration: session.duration,
+      topic: session.topic || 'General',
+      cardsReviewed: session.cardsReviewed || 0,
+      correctAnswers: session.correctAnswers || 0,
+      startedAt: session.startedAt || Date.now(),
+      completedAt: Date.now(),
+      ...session
+    };
+    
+    sessions.push(newSession);
+    return this.storage.set('studySessions', sessions);
+  }
+  
+  getStudyStats(days = 7) {
+    const sessions = this.getStudySessions();
+    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+    
+    const recentSessions = sessions.filter(s => s.completedAt >= cutoffTime);
+    
+    return {
+      totalSessions: recentSessions.length,
+      totalDuration: recentSessions.reduce((sum, s) => sum + s.duration, 0),
+      totalCardsReviewed: recentSessions.reduce((sum, s) => sum + (s.cardsReviewed || 0), 0),
+      averageAccuracy: recentSessions.length > 0
+        ? recentSessions.reduce((sum, s) => {
+            const accuracy = s.cardsReviewed > 0 
+              ? (s.correctAnswers / s.cardsReviewed) * 100 
+              : 0;
+            return sum + accuracy;
+          }, 0) / recentSessions.length
+        : 0
+    };
+  }
+  
+  // ==========================================================================
+  // POMODORO
+  // ==========================================================================
+  
+  getPomodoroState() {
+    this._ensureReady();
+    const pomodoro = this.storage.get('pomodoro', getDefaults().pomodoro);
+    return typeof pomodoro === 'object' ? pomodoro : getDefaults().pomodoro;
+  }
+  
+  setPomodoroState(state) {
+    this._ensureReady();
+    if (!state || typeof state !== 'object') return false;
+    
+    const current = this.getPomodoroState();
+    const updated = { ...current, ...state };
+    
+    return this.storage.set('pomodoro', updated);
+  }
+  
+  resetPomodoroState() {
+    this._ensureReady();
+    return this.storage.set('pomodoro', getDefaults().pomodoro);
+  }
+  
+  // ==========================================================================
+  // HOTKEYS
+  // ==========================================================================
+  
   getHotkeys() {
-    return this._getStoreSync().get('hotkeys');
+    this._ensureReady();
+    const hotkeys = this.storage.get('hotkeys', getDefaults().hotkeys);
+    return typeof hotkeys === 'object' ? hotkeys : getDefaults().hotkeys;
   }
   
   setHotkey(key, value) {
+    this._ensureReady();
+    if (!key || !value) return false;
+    
     const hotkeys = this.getHotkeys();
     hotkeys[key] = value;
-    this._getStoreSync().set('hotkeys', hotkeys);
+    return this.storage.set('hotkeys', hotkeys);
   }
   
   setHotkeys(newHotkeys) {
-    this._getStoreSync().set('hotkeys', { ...this.getHotkeys(), ...newHotkeys });
+    this._ensureReady();
+    if (!newHotkeys || typeof newHotkeys !== 'object') return false;
+    
+    const current = this.getHotkeys();
+    return this.storage.set('hotkeys', { ...current, ...newHotkeys });
   }
   
+  // ==========================================================================
   // UI
+  // ==========================================================================
+  
   getUI() {
-    return this._getStoreSync().get('ui');
+    this._ensureReady();
+    const ui = this.storage.get('ui', getDefaults().ui);
+    return typeof ui === 'object' ? ui : getDefaults().ui;
   }
   
   setUI(key, value) {
+    this._ensureReady();
+    if (!key) return false;
+    
     const ui = this.getUI();
     ui[key] = value;
-    this._getStoreSync().set('ui', ui);
+    return this.storage.set('ui', ui);
   }
   
-  // Scan
+  // ==========================================================================
+  // SCAN
+  // ==========================================================================
+  
   getScanConfig() {
-    return this._getStoreSync().get('scan');
+    this._ensureReady();
+    const scan = this.storage.get('scan', getDefaults().scan);
+    return typeof scan === 'object' ? scan : getDefaults().scan;
   }
   
   setScanConfig(key, value) {
+    this._ensureReady();
+    if (!key) return false;
+    
     const scan = this.getScanConfig();
     scan[key] = value;
-    this._getStoreSync().set('scan', scan);
+    return this.storage.set('scan', scan);
   }
   
-  // Window Management
+  // ==========================================================================
+  // WINDOW MANAGEMENT
+  // ==========================================================================
+  
   getWindowConfig() {
-    return this._getStoreSync().get('windowManagement');
+    this._ensureReady();
+    const config = this.storage.get('windowManagement', getDefaults().windowManagement);
+    return typeof config === 'object' ? config : getDefaults().windowManagement;
   }
   
   setWindowConfig(key, value) {
+    this._ensureReady();
+    if (!key) return false;
+    
     const config = this.getWindowConfig();
     config[key] = value;
-    this._getStoreSync().set('windowManagement', config);
+    return this.storage.set('windowManagement', config);
   }
   
-  // Reset toda la configuración
+  // ==========================================================================
+  // UTILIDADES
+  // ==========================================================================
+  
   reset() {
-    this._getStoreSync().clear();
-  }
-  
-  // Exportar configuración
-  export() {
-    return this._getStoreSync().store;
-  }
-  
-  // Importar configuración
-  import(data) {
+    this._ensureReady();
     try {
-      Object.keys(data).forEach(key => {
-        this._getStoreSync().set(key, data[key]);
-      });
+      this.storage.clear();
+      console.log('✅ Config reset');
       return true;
-    } catch (e) {
-      console.error('Error importing config:', e);
+    } catch (error) {
+      console.error('Error resetting:', error);
       return false;
     }
   }
+  
+  export() {
+    this._ensureReady();
+    try {
+      return this.storage.getAll();
+    } catch (error) {
+      console.error('Error exporting:', error);
+      return getDefaults();
+    }
+  }
+  
+  import(data) {
+    this._ensureReady();
+    if (!data || typeof data !== 'object') return false;
+    
+    try {
+      const defaults = getDefaults();
+      
+      for (const key in data) {
+        if (key in defaults) {
+          this.storage.set(key, data[key]);
+        }
+      }
+      
+      console.log('✅ Config imported');
+      return true;
+    } catch (error) {
+      console.error('Error importing:', error);
+      return false;
+    }
+  }
+  
+  getStats() {
+    return {
+      favorites: this.getFavorites().length,
+      searchHistory: this.getSearchHistory().length,
+      launchHistory: this.getLaunchHistory().length,
+      flashcards: this.getFlashcards().length,
+      notes: this.getNotes().length,
+      studySessions: this.getStudySessions().length,
+      backend: this.storage.useElectronStore ? 'electron-store' : 'fs',
+      ready: this.ready
+    };
+  }
 }
+
+// ============================================================================
+// SINGLETON
+// ============================================================================
 
 const configManager = new ConfigManager();
 
-// Inicializar store al cargar el módulo
-initStore().then(s => {
-  store = s;
-  configManager._storeReady = true;
-}).catch(err => {
-  console.error('Error inicializando store:', err);
+configManager.init().catch(error => {
+  console.error('Failed to init ConfigManager:', error);
 });
 
 module.exports = configManager;
-
