@@ -30,6 +30,15 @@ function getDefaults() {
     // Historial de aplicaciones lanzadas (últimas 20)
     launchHistory: [],
     
+    // Tarjetas de estudio (Flashcards)
+    flashcards: [],
+    
+    // Notas educativas
+    notes: [],
+    
+    // Sesiones de estudio
+    studySessions: [],
+    
     // Hotkeys personalizados
     hotkeys: {
       openLauncher: 'Ctrl+Space',
@@ -68,6 +77,18 @@ function getDefaults() {
       enableTiling: true,
       enableFloating: true,
       defaultLayout: 'grid' // grid, vertical, horizontal
+    },
+    
+    // Estado del Pomodoro
+    pomodoro: {
+      state: 'idle', // idle, working, shortBreak, longBreak
+      timeRemaining: 0,
+      currentPomodoro: 0,
+      totalPomodoros: 0,
+      phase: 'work', // work, break
+      startedAt: null, // timestamp cuando se inició
+      pausedAt: null, // timestamp cuando se pausó
+      pausedDuration: 0 // tiempo total pausado en segundos
     }
   };
 }
@@ -213,6 +234,15 @@ class ConfigManager {
     const config = this.getWindowConfig();
     config[key] = value;
     this._getStoreSync().set('windowManagement', config);
+  }
+  
+  // Pomodoro State
+  getPomodoroState() {
+    return this._getStoreSync().get('pomodoro');
+  }
+  
+  setPomodoroState(state) {
+    this._getStoreSync().set('pomodoro', state);
   }
   
   // Reset toda la configuración

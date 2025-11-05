@@ -181,6 +181,7 @@ ipcMain.handle('get-config', () => {
     ui: configManager.getUI(),
     scan: configManager.getScanConfig(),
     windowManagement: configManager.getWindowConfig(),
+    pomodoro: configManager.getPomodoroState(),
     favorites: configManager.getFavorites(),
     searchHistory: configManager.getSearchHistory(),
     launchHistory: configManager.getLaunchHistory()
@@ -195,6 +196,8 @@ ipcMain.handle('set-config', (_e, section: string, key: string, value: any): boo
     configManager.setScanConfig(key, value);
   } else if (section === 'windowManagement') {
     configManager.setWindowConfig(key, value);
+  } else if (section === 'pomodoro' && key === 'state') {
+    configManager.setPomodoroState(value);
   } else if (section === 'search' && key === 'lastQuery') {
     configManager.addSearchHistory(value);
   }

@@ -9,8 +9,12 @@ import { SearchBar } from './SearchBar';
 import { ResultsList } from './ResultsList';
 import { Footer } from './Footer';
 import { CalcResult } from './CalcResult';
+import { ConvertResult } from './ConvertResult';
 import { SmartSuggestions } from './SmartSuggestions';
+import { PomodoroTimerComponent } from './PomodoroTimer';
 import { parseCommand, evaluateMath, formatCalcResult } from '../../ai/commandParser';
+import { convertUnits } from '../../ai/unitConverter';
+import { getPomodoroTimer } from '../../ai/pomodoro';
 import './Launcher.css';
 
 export const Launcher: React.FC = () => {
@@ -31,6 +35,9 @@ export const Launcher: React.FC = () => {
   
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [calcResult, setCalcResult] = useState<{ query: string; result: string } | null>(null);
+  const [convertResult, setConvertResult] = useState<{ value: number; from: string; to: string; result: number } | null>(null);
+  const [showPomodoro, setShowPomodoro] = useState(false);
+  const [pomodoroStatus, setPomodoroStatus] = useState<{ state: string } | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Aplicar tema al montar y cuando cambie
@@ -156,16 +163,38 @@ export const Launcher: React.FC = () => {
       clearTimeout(searchTimeoutRef.current);
     }
     
+    // Limpiar resultados anteriores
+    setCalcResult(null);
+    setConvertResult(null);
+    
     // Si la query está vacía, actualizar inmediatamente
     if (!searchQuery.trim()) {
       filterApps('');
-      setCalcResult(null);
       return;
     }
     
-    // Detectar comandos de cálculo inmediatamente (sin debounce)
+    // Detectar comandos inmediatamente (sin debounce)
     const trimmedQuery = searchQuery.trim();
+    
+    // Prioridad 1: Si empieza con número o función matemática, activar modo calculadora
+    const startsWithNumberOrMath = /^[\d+\-*/().%\s]|^(sin|cos|tan|ln|log|sqrt|exp|pow)\s*\(/i.test(trimmedQuery);
+    
+    if (startsWithNumberOrMath) {
+      // Intentar evaluar directamente como expresión matemática
+      const result = evaluateMath(trimmedQuery);
+      if (result !== null) {
+        setCalcResult({
+          query: trimmedQuery,
+          result: formatCalcResult(result)
+        });
+        return;
+      }
+    }
+    
+    // Si no funcionó, usar el parser de comandos
     const command = parseCommand(trimmedQuery);
+    
+    // Comando de cálculo
     if (command.type === 'calculate' && command.query) {
       const result = evaluateMath(command.query);
       if (result !== null) {
@@ -173,12 +202,55 @@ export const Launcher: React.FC = () => {
           query: command.query,
           result: formatCalcResult(result)
         });
-        // No hacer búsqueda para cálculos
         return;
       }
-    } else {
-      setCalcResult(null);
     }
+    
+    // Comando de conversión
+    if (command.type === 'convert' && command.value && command.from && command.to) {
+      const conversion = convertUnits(command.value, command.from, command.to);
+      if (conversion) {
+        setConvertResult({
+          value: command.value,
+          from: command.from,
+          to: command.to,
+          result: conversion.result
+        });
+        return;
+      }
+    }
+    
+    // Comando educativo (Wikipedia) - solo detectar, no mostrar resultado aún
+    if (command.type === 'educational' && command.action === 'wikipedia') {
+      // Se manejará en handleLaunch
+      return;
+    }
+    
+    // Comando Pomodoro - mostrar temporizador y ejecutar acción si es start
+    if (command.type === 'pomodoro') {
+      getPomodoroTimer().then((timer) => {
+        const pomodoroStatus = timer.getStatus();
+        
+        // Si es comando start y está idle, iniciar automáticamente
+        if (command.action === 'start' && pomodoroStatus.state === 'idle') {
+          timer.start();
+          setShowPomodoro(true);
+          return;
+        }
+        
+        // Mostrar temporizador si está activo o si se está escribiendo el comando
+        setShowPomodoro(true);
+      });
+      return;
+    }
+    
+    // Si no es comando Pomodoro, ocultar el temporizador solo si no está activo
+    getPomodoroTimer().then((timer) => {
+      const pomodoroStatus = timer.getStatus();
+      if (pomodoroStatus.state === 'idle') {
+        setShowPomodoro(false);
+      }
+    });
     
     // Debounce para búsqueda normal (50ms para respuesta rápida pero sin parpadeo)
     searchTimeoutRef.current = setTimeout(() => {
@@ -208,6 +280,58 @@ export const Launcher: React.FC = () => {
         e.preventDefault();
         moveActive(-1);
       } else if (e.key === 'Enter') {
+        const trimmedQuery = searchQuery.trim();
+        
+        // Detectar si es un comando antes de procesar
+        const command = parseCommand(trimmedQuery);
+        
+        // Si es comando Pomodoro, ejecutar la acción
+        if (command.type === 'pomodoro' && command.action) {
+          getPomodoroTimer().then((timer) => {
+          
+            switch (command.action) {
+              case 'start':
+                timer.start();
+                setShowPomodoro(true);
+                break;
+              case 'pause':
+                timer.pause();
+                break;
+              case 'stop':
+                timer.stop();
+                setShowPomodoro(false);
+                break;
+              case 'reset':
+                timer.reset();
+                setShowPomodoro(false);
+                break;
+              case 'break':
+                const status = timer.getStatus();
+                if (status.currentPomodoro % 4 === 0) {
+                  timer.startLongBreak();
+                } else {
+                  timer.startShortBreak();
+                }
+                setShowPomodoro(true);
+                break;
+            }
+            
+            window.api.hideWindow();
+            setSearchQuery('');
+          }).catch(() => {});
+          return;
+        }
+        
+        // Si hay resultado de conversión, copiarlo
+        if (convertResult) {
+          const text = `${convertResult.result} ${convertResult.to}`;
+          navigator.clipboard.writeText(text).catch(() => {});
+          window.api.hideWindow();
+          setSearchQuery('');
+          setConvertResult(null);
+          return;
+        }
+        
         // Si hay resultado de cálculo, copiarlo
         if (calcResult) {
           navigator.clipboard.writeText(calcResult.result).catch(() => {});
@@ -226,19 +350,58 @@ export const Launcher: React.FC = () => {
         } else if (filteredApps[activeIndex]) {
           // Si hay apps filtradas, lanzar la seleccionada
           handleLaunch(filteredApps[activeIndex]);
+        } else if (trimmedQuery) {
+          // Si hay texto pero no hay apps, intentar ejecutar como comando
+          handleLaunch(filteredApps[0] || apps[0]);
         }
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredApps, activeIndex, moveActive, calcResult, smartSuggestions]);
+  }, [filteredApps, activeIndex, moveActive, calcResult, convertResult, smartSuggestions]);
   
   const handleLaunch = async (app: typeof filteredApps[0]) => {
     const trimmedQuery = searchQuery.trim();
     
     // Detectar si es un comando
     const command = parseCommand(trimmedQuery);
+    
+    // Manejar comandos Pomodoro
+    if (command.type === 'pomodoro' && command.action) {
+      const timer = await getPomodoroTimer();
+      
+      switch (command.action) {
+        case 'start':
+          timer.start();
+          setShowPomodoro(true);
+          break;
+        case 'pause':
+          timer.pause();
+          break;
+        case 'stop':
+          timer.stop();
+          setShowPomodoro(false);
+          break;
+        case 'reset':
+          timer.reset();
+          setShowPomodoro(false);
+          break;
+        case 'break':
+          const status = timer.getStatus();
+          if (status.currentPomodoro % 4 === 0) {
+            timer.startLongBreak();
+          } else {
+            timer.startShortBreak();
+          }
+          setShowPomodoro(true);
+          break;
+      }
+      
+      window.api.hideWindow();
+      setSearchQuery('');
+      return;
+    }
     
     // Comando de cálculo
     if (command.type === 'calculate' && command.query) {
@@ -291,6 +454,45 @@ export const Launcher: React.FC = () => {
       }
     }
     
+    // Comando educativo (Wikipedia)
+    if (command.type === 'educational' && command.action === 'wikipedia' && command.query) {
+      // Buscar navegador y abrir Wikipedia
+      const browser = apps.find(a => 
+        a.name.toLowerCase().includes('chrome') || 
+        a.name.toLowerCase().includes('firefox') ||
+        a.name.toLowerCase().includes('edge') ||
+        a.name.toLowerCase().includes('opera')
+      );
+      
+      if (browser) {
+        await window.api.launch(browser.path, browser.type);
+        // Abrir Wikipedia en el navegador (requiere modificar launch handler)
+        // Por ahora, el usuario puede navegar manualmente
+        // URL sería: https://es.wikipedia.org/wiki/${encodeURIComponent(command.query)}
+      }
+      window.api.hideWindow();
+      setSearchQuery('');
+      setCalcResult(null);
+      setConvertResult(null);
+      return;
+    }
+    
+    // Comando de conversión
+    if (command.type === 'convert' && command.value && command.from && command.to) {
+      const conversion = convertUnits(command.value, command.from, command.to);
+      if (conversion) {
+        // Resultado ya se muestra en el componente ConvertResult
+        // Aquí solo copiamos al portapapeles si presiona Enter
+        const text = `${conversion.result} ${command.to}`;
+        navigator.clipboard.writeText(text).catch(() => {});
+        window.api.hideWindow();
+        setSearchQuery('');
+        setCalcResult(null);
+        setConvertResult(null);
+        return;
+      }
+    }
+    
     // Comando de búsqueda web
     if (command.type === 'search' && command.query) {
       // Buscar navegador en las apps
@@ -309,6 +511,7 @@ export const Launcher: React.FC = () => {
       window.api.hideWindow();
       setSearchQuery('');
       setCalcResult(null);
+      setConvertResult(null);
       return;
     }
     
@@ -347,11 +550,33 @@ export const Launcher: React.FC = () => {
     setCalcResult(null);
   };
   
-  // Mostrar sugerencias inteligentes cuando no hay query
-  const showSmartSuggestions = !searchQuery.trim() && smartSuggestions.length > 0 && !isLoading;
+  // Verificar estado del Pomodoro periódicamente
+  useEffect(() => {
+    const checkPomodoro = async () => {
+      try {
+        const timer = await getPomodoroTimer();
+        setPomodoroStatus(timer.getStatus());
+      } catch (error) {
+        console.error('Error verificando Pomodoro:', error);
+      }
+    };
+    checkPomodoro();
+    const interval = setInterval(checkPomodoro, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Determinar si el Pomodoro está activo
+  const isPomodoroActive = showPomodoro || (pomodoroStatus && pomodoroStatus.state !== 'idle');
+  
+  // Si hay búsqueda activa, priorizar resultados sobre Pomodoro
+  const hasActiveSearch = searchQuery.trim().length > 0;
+  
+  // Mostrar sugerencias inteligentes cuando no hay query y no hay Pomodoro activo
+  const showSmartSuggestions = !hasActiveSearch && !searchQuery.trim() && smartSuggestions.length > 0 && !isLoading;
   const showCalcResult = calcResult !== null;
-  // Solo mostrar resultados si no está cargando
-  const showResults = !showCalcResult && !isLoading && filteredApps.length > 0;
+  const showConvertResult = convertResult !== null;
+  // Solo mostrar resultados si no está cargando y hay resultados
+  const showResults = !showCalcResult && !showConvertResult && !isLoading && filteredApps.length > 0;
   
   return (
     <div className="overlay">
@@ -361,10 +586,20 @@ export const Launcher: React.FC = () => {
           query={searchQuery}
           onQueryChange={setSearchQuery}
         />
-        {showCalcResult && calcResult && (
+        
+        {/* Resultados de búsqueda primero si hay búsqueda activa */}
+        {hasActiveSearch && showCalcResult && calcResult && (
           <CalcResult query={calcResult.query} result={calcResult.result} />
         )}
-        {showResults && !showSmartSuggestions && (
+        {hasActiveSearch && showConvertResult && convertResult && (
+          <ConvertResult 
+            value={convertResult.value}
+            from={convertResult.from}
+            to={convertResult.to}
+            result={convertResult.result}
+          />
+        )}
+        {hasActiveSearch && showResults && !showSmartSuggestions && (
           <ResultsList 
             apps={filteredApps}
             activeIndex={activeIndex}
@@ -372,17 +607,32 @@ export const Launcher: React.FC = () => {
             onLaunch={handleLaunch}
           />
         )}
-        {showSmartSuggestions && (
+        {hasActiveSearch && !showCalcResult && !showConvertResult && !showResults && !showSmartSuggestions && !isLoading && (
+          <div className="no-results">
+            <p>No se encontraron resultados</p>
+            <p className="hint">Prueba: "calcula 2+2", "convertir 100 km a millas", "wikipedia: Einstein", "pomodoro"</p>
+          </div>
+        )}
+        
+        {/* Pomodoro en segundo lugar - se muestra si está activo (debajo de resultados si hay búsqueda) */}
+        {isPomodoroActive && (
+          <PomodoroTimerComponent />
+        )}
+        
+        {/* Sugerencias inteligentes solo cuando no hay búsqueda activa */}
+        {!hasActiveSearch && showSmartSuggestions && (
           <SmartSuggestions
             suggestions={smartSuggestions}
             activeIndex={activeIndex}
             onSelect={handleLaunch}
           />
         )}
-        {!showCalcResult && !showResults && !showSmartSuggestions && !isLoading && (
+        
+        {/* Mensaje cuando no hay búsqueda ni Pomodoro */}
+        {!hasActiveSearch && !isPomodoroActive && !showSmartSuggestions && !isLoading && (
           <div className="no-results">
-            <p>No se encontraron resultados</p>
-            <p className="hint">Prueba escribiendo el nombre de una aplicación o usa comandos como "calcula 2+2"</p>
+            <p>Escribe para buscar o escribe "pomodoro" para iniciar</p>
+            <p className="hint">Prueba: "calcula 2+2", "convertir 100 km a millas", "wikipedia: Einstein", "pomodoro"</p>
           </div>
         )}
         <Footer />
