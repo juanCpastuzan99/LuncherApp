@@ -41,6 +41,11 @@ declare global {
       // Events
       onAppsUpdated: (callback: (count: number) => void) => void;
       onFocusSearch: (callback: () => void) => void;
+      onThemeChanged?: (callback: (theme: string) => void) => void;
+      
+      // Icon API
+      getAppIcon?: (appPath: string, appType?: string) => Promise<string>;
+      
       // Window control
       hideWindow: () => Promise<boolean>;
     };
