@@ -58,6 +58,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('focus-search', () => {
       callback();
     });
-  }
+  },
+  onThemeChanged: (callback: (theme: string) => void) => {
+    ipcRenderer.on('theme-changed', (_event, theme) => {
+      callback(theme);
+    });
+  },
+  
+  // Icon API
+  getAppIcon: (appPath: string, appType?: string) =>
+    ipcRenderer.invoke('get-app-icon', appPath, appType) as Promise<string>,
+  
+  // Window control
+  hideWindow: () => ipcRenderer.invoke('hide-window') as Promise<boolean>
 });
 

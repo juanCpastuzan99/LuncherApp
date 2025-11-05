@@ -106,8 +106,8 @@ export const ResultsList: React.FC<ResultsListProps> = ({
     }
   };
   
-  // No mostrar mensajes, solo resultados (o lista vacía)
-  if (apps.length === 0) {
+  // No mostrar nada si está cargando o no hay resultados
+  if (isLoading || apps.length === 0) {
     return <ul className="results"></ul>;
   }
   

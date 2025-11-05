@@ -4,7 +4,9 @@
  */
 
 import { create } from 'zustand';
-import type { App, AppConfig } from '@shared/types';
+import type { App, AppConfig, LaunchHistoryItem } from '@shared/types';
+import { intelligentSearch } from '../../ai/fuzzySearch';
+import { getSmartSuggestions } from '../../ai/smartSuggestions';
 
 interface AppState {
   // Estado de aplicaciones
@@ -17,6 +19,8 @@ interface AppState {
   // Configuración
   config: AppConfig | null;
   favorites: string[];
+  launchHistory: LaunchHistoryItem[];
+  smartSuggestions: Array<{ app: App; reason: string; confidence: number }>;
   
   // Acciones
   setApps: (apps: App[]) => void;
@@ -26,6 +30,7 @@ interface AppState {
   setLoading: (loading: boolean) => void;
   setConfig: (config: AppConfig) => void;
   setFavorites: (favorites: string[]) => void;
+  setLaunchHistory: (history: LaunchHistoryItem[]) => void;
   addFavorite: (appId: string) => void;
   removeFavorite: (appId: string) => void;
   
@@ -59,11 +64,13 @@ export const useAppStore = create<AppState>()(
       isLoading: true,
       config: null,
       favorites: [],
+      launchHistory: [],
+      smartSuggestions: [],
       
       // Acciones
       setApps: (apps) => {
         // Priorizar favoritos
-        const { favorites } = get();
+        const { favorites, isLoading } = get();
         const favoriteApps = favorites
           .map(favId => apps.find(a => a.id === favId))
           .filter(Boolean) as App[];
@@ -71,17 +78,23 @@ export const useAppStore = create<AppState>()(
         const sortedApps = [...favoriteApps, ...otherApps];
         
         set({ apps: sortedApps });
-        get().filterApps(get().searchQuery);
+        // Solo filtrar si no está cargando (para evitar mostrar resultados durante escaneo)
+        if (!isLoading) {
+          get().filterApps(get().searchQuery);
+        }
       },
       
       setSearchQuery: (query) => {
+        // Solo actualizar el query, no filtrar inmediatamente
+        // El filtrado se hará con debounce en el componente
         set({ searchQuery: query, activeIndex: 0 });
-        get().filterApps(query);
       },
       
       setFilteredApps: (apps) => {
         const maxResults = get().config?.ui?.maxResults || 50;
-        set({ filteredApps: apps.slice(0, maxResults) });
+        const sliced = apps.slice(0, maxResults);
+        // Zustand hace shallow comparison, así que solo actualizar si es diferente
+        set({ filteredApps: sliced });
       },
       
       setActiveIndex: (index) => {
@@ -97,6 +110,14 @@ export const useAppStore = create<AppState>()(
       
       setFavorites: (favorites) => set({ favorites }),
       
+      setLaunchHistory: (history) => {
+        set({ launchHistory: history });
+        // Actualizar sugerencias cuando cambia el historial
+        if (!get().searchQuery) {
+          get().filterApps('');
+        }
+      },
+      
       addFavorite: (appId) => {
         const { favorites } = get();
         if (!favorites.includes(appId)) {
@@ -111,27 +132,50 @@ export const useAppStore = create<AppState>()(
       
       // Helpers
       filterApps: (query) => {
-        const { apps, config } = get();
-        if (!query) {
+        const { apps, config, launchHistory, favorites, isLoading } = get();
+        
+        // No actualizar resultados si está cargando (durante escaneo)
+        if (isLoading) {
+          return [];
+        }
+        
+        const trimmedQuery = query.trim();
+        
+        if (!trimmedQuery) {
+          // Mostrar sugerencias inteligentes cuando no hay query
+          const smartSuggestions = getSmartSuggestions(
+            apps,
+            launchHistory || [],
+            favorites || []
+          );
+          
           const maxResults = config?.ui?.maxResults || 50;
-          const filtered = apps.slice(0, maxResults);
-          get().setFilteredApps(filtered);
+          // Si hay sugerencias, usarlas; si no, apps normales
+          const filtered = smartSuggestions.length > 0
+            ? smartSuggestions.map(s => s.app).slice(0, maxResults)
+            : apps.slice(0, maxResults);
+          
+          // Actualizar ambos estados en una sola operación para evitar parpadeo
+          set({ 
+            smartSuggestions,
+            filteredApps: filtered
+          });
           return filtered;
         }
         
-        const withScore = apps.map((a) => ({
-          ...a,
-          score: Math.max(
-            simpleScore(query, a.name),
-            simpleScore(query, a.path)
-          )
-        }));
+        // Usar búsqueda inteligente mejorada
+        const searchResults = intelligentSearch(trimmedQuery, apps, {
+          maxResults: config?.ui?.maxResults || 50,
+          fuzzyThreshold: 0.3
+        });
         
-        const filtered = withScore
-          .filter((a) => a.score > 0)
-          .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+        const filtered = searchResults.map(r => r.app);
         
-        get().setFilteredApps(filtered);
+        // Actualizar ambos estados en una sola operación para evitar parpadeo
+        set({ 
+          smartSuggestions: [],
+          filteredApps: filtered
+        });
         return filtered;
       },
       
