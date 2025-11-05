@@ -1,176 +1,362 @@
-.pomodoro-timer {
-  padding: 20px 16px;
-  text-align: center;
-  background: linear-gradient(135deg, rgba(244, 67, 54, 0.15) 0%, rgba(244, 67, 54, 0.05) 100%);
-  border-radius: 8px;
-  margin: 0 12px 12px 12px;
-  border: 1px solid rgba(244, 67, 54, 0.3);
-  animation: fadeIn 0.15s ease-in-out;
-  flex-shrink: 0; /* No permitir que se encoja */
-  order: 2; /* Asegurar que esté después del SearchBar */
-}
+/* ==================================
+   POMODORO TIMER - ESTILO MINIMALISTA
+   Inspirado en calculadora de lanzador
+   ================================== */
 
-.pomodoro-timer.idle {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.15) 0%, rgba(158, 158, 158, 0.05) 100%);
-  border-color: rgba(158, 158, 158, 0.3);
-}
-
-.pomodoro-timer.working {
-  background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.1) 100%);
-  border-color: rgba(244, 67, 54, 0.4);
-}
-
-.pomodoro-timer.shortBreak,
-.pomodoro-timer.longBreak {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
-  border-color: rgba(76, 175, 80, 0.4);
-}
-
-.pomodoro-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
-}
-
-.pomodoro-icon {
-  font-size: 16px;
-}
-
-.pomodoro-label {
-  font-size: 11px;
-}
-
-.pomodoro-time {
-  font-size: 48px;
-  font-weight: bold;
-  color: #F44336;
-  margin: 16px 0;
-  font-family: 'Consolas', 'Monaco', monospace;
-  text-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
-}
-
-.pomodoro-timer.shortBreak .pomodoro-time,
-.pomodoro-timer.longBreak .pomodoro-time {
-  color: #4CAF50;
-  text-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
-}
-
-.pomodoro-progress {
-  width: 100%;
-  height: 4px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 2px;
-  overflow: hidden;
-  margin: 12px 0;
-}
-
-.pomodoro-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #F44336 0%, #FF5722 100%);
-  transition: width 1s linear;
-  border-radius: 2px;
-}
-
-.pomodoro-timer.shortBreak .pomodoro-progress-bar,
-.pomodoro-timer.longBreak .pomodoro-progress-bar {
-  background: linear-gradient(90deg, #4CAF50 0%, #66BB6A 100%);
-}
-
-.pomodoro-stats {
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  margin: 12px 0;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
-  gap: 8px;
-}
-
-.pomodoro-total {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.pomodoro-controls {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 16px;
-  flex-wrap: wrap;
-}
-
-.pomodoro-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: white;
-  min-width: 80px;
-}
-
-.pomodoro-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.pomodoro-btn:active {
-  transform: translateY(0);
-}
-
-.pomodoro-btn.start,
-.pomodoro-btn.resume {
-  background: #4CAF50;
-}
-
-.pomodoro-btn.start:hover,
-.pomodoro-btn.resume:hover {
-  background: #66BB6A;
-}
-
-.pomodoro-btn.pause {
-  background: #FF9800;
-}
-
-.pomodoro-btn.pause:hover {
-  background: #FFB74D;
-}
-
-.pomodoro-btn.stop {
-  background: #F44336;
-}
-
-.pomodoro-btn.stop:hover {
-  background: #EF5350;
-}
-
-.pomodoro-btn.reset {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.pomodoro-btn.reset:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
+   .pomodoro-launcher {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    position: relative;
+    overflow: hidden;
   }
-  to {
-    opacity: 1;
-    transform: scale(1);
+  
+  /* Efecto de borde sutil */
+  .pomodoro-launcher::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, 
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
   }
-}
-
+  
+  /* ==================================
+     ÁREA PRINCIPAL
+     ================================== */
+  
+  .pomodoro-main {
+    margin-bottom: 20px;
+  }
+  
+  .pomodoro-status-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  
+  .status-icon {
+    font-size: 24px;
+    line-height: 1;
+  }
+  
+  .status-text {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    flex: 1;
+  }
+  
+  .total-badge {
+    background: rgba(99, 102, 241, 0.2);
+    color: #818cf8;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+  }
+  
+  /* ==================================
+     TIEMPO GRANDE
+     ================================== */
+  
+  .pomodoro-time-large {
+    font-size: 72px;
+    font-weight: 300;
+    color: #ffffff;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -2px;
+    margin: 20px 0;
+    text-align: left;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* ==================================
+     BARRA DE PROGRESO MINI
+     ================================== */
+  
+  .pomodoro-progress-mini {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 16px 0 12px 0;
+  }
+  
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+    transition: width 0.3s ease;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+  }
+  
+  /* Estados de color de la barra */
+  .pomodoro-launcher:has(.status-text:contains('Trabajando')) .progress-fill {
+    background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  }
+  
+  .pomodoro-launcher:has(.status-text:contains('Descanso')) .progress-fill {
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  }
+  
+  /* ==================================
+     INFO DE SESIÓN
+     ================================== */
+  
+  .pomodoro-session-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  
+  .pause-dot {
+    color: #f59e0b;
+    font-size: 12px;
+    animation: blink 1.5s infinite;
+  }
+  
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  
+  /* ==================================
+     HINT (estado idle)
+     ================================== */
+  
+  .pomodoro-hint {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+    margin-top: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    text-align: center;
+  }
+  
+  /* ==================================
+     CONTROLES MINIMALISTAS
+     ================================== */
+  
+  .pomodoro-controls-mini {
+    display: flex;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  
+  .control-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+  }
+  
+  .control-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+  
+  .control-btn:active {
+    transform: translateY(0);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  
+  .control-btn.start-btn {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-color: transparent;
+    color: white;
+    font-size: 15px;
+  }
+  
+  .control-btn.start-btn:hover {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  }
+  
+  .control-btn.stop {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+  }
+  
+  .control-btn.stop:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+  
+  /* ==================================
+     ALERTA MINIMALISTA
+     ================================== */
+  
+  .alert-mini {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    animation: slideDown 0.3s ease;
+  }
+  
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+  
+  .alert-mini-content {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(20px);
+    min-width: 280px;
+    cursor: pointer;
+  }
+  
+  .alert-mini-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    color: white;
+    font-weight: 600;
+  }
+  
+  .alert-mini-text {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    line-height: 1.4;
+    font-weight: 500;
+  }
+  
+  .alert-mini-text div:first-child {
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  
+  .alert-mini-text div:last-child {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 13px;
+  }
+  
+  /* Animación de salida */
+  .alert-mini.hiding {
+    animation: slideUp 0.3s ease forwards;
+  }
+  
+  @keyframes slideUp {
+    to {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-20px);
+    }
+  }
+  
+  /* ==================================
+     RESPONSIVE
+     ================================== */
+  
+  @media (max-width: 480px) {
+    .pomodoro-launcher {
+      padding: 20px;
+    }
+  
+    .pomodoro-time-large {
+      font-size: 56px;
+    }
+  
+    .status-icon {
+      font-size: 20px;
+    }
+  
+    .control-btn {
+      padding: 10px;
+      font-size: 14px;
+    }
+  }
+  
+  /* ==================================
+     EFECTOS VISUALES SUTILES
+     ================================== */
+  
+  /* Glow sutil en el tiempo cuando está activo */
+  .pomodoro-launcher:has(.pomodoro-progress-mini) .pomodoro-time-large {
+    text-shadow: 
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 20px rgba(99, 102, 241, 0.15);
+  }
+  
+  /* Animación suave del ícono */
+  .status-icon {
+    animation: gentle-pulse 3s ease-in-out infinite;
+  }
+  
+  @keyframes gentle-pulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+  }
+  
+  /* Transición suave del fondo según estado */
+  .pomodoro-launcher {
+    transition: box-shadow 0.5s ease;
+  }
+  
+  .pomodoro-launcher:has([class*="Trabajando"]) {
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(239, 68, 68, 0.1);
+  }
+  
+  .pomodoro-launcher:has([class*="Descanso"]) {
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(16, 185, 129, 0.1);
+  }

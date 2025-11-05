@@ -1,501 +1,225 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, shell, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
-const windowManager = require('./windowManager');
-const configManager = require('./config');
+const Store = require('electron-store');
 
-// Determinar el directorio base correcto (ya sea desarrollo o instalación global)
-const getBaseDir = () => {
-  // Si estamos en una instalación global, usar __dirname
-  // Si estamos en desarrollo, usar process.cwd()
-  const isGlobal = __dirname.includes('node_modules') || __dirname.includes('AppData');
-  return isGlobal ? path.dirname(__dirname) : process.cwd();
-};
+// Configuración de caché (se inicializa cuando app está lista)
+let CACHE_FILE;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 
-let mainWindow = null;
-let settingsWindow = null;
-let appIndex = [];
-let config = {
-  hotkey: 'Ctrl+Alt+Space',
-  theme: 'dark',
-  transparency: true,
-  excludePatterns: ['uninstall', 'help', 'documentation'],
-  windowHotkeys: {
-    tileGrid: 'Ctrl+Alt+T',
-    tileVertical: 'Ctrl+Alt+Shift+T',
-    tileHorizontal: 'Ctrl+Alt+H',
-    moveLeft: 'Ctrl+Alt+Left',
-    moveRight: 'Ctrl+Alt+Right',
-    center: 'Ctrl+Alt+C',
-    maximize: 'Ctrl+Alt+Up',
-    minimize: 'Ctrl+Alt+Down',
-    workspaceNext: 'Ctrl+Alt+Right',
-    workspacePrev: 'Ctrl+Alt+Left'
+// Función para obtener la ruta del caché de forma segura
+function getCacheFile() {
+  if (!CACHE_FILE) {
+    CACHE_FILE = path.join(app.getPath('userData'), 'apps-cache.json');
   }
-};
+  return CACHE_FILE;
+}
 
-const userDataDir = app.getPath('userData');
-const configPath = path.join(userDataDir, 'config.json');
-
-function loadConfig() {
-  try {
-    if (fs.existsSync(configPath)) {
-      const raw = fs.readFileSync(configPath, 'utf-8');
-      const parsed = JSON.parse(raw);
-      config = { ...config, ...parsed };
-    } else {
-      fs.mkdirSync(userDataDir, { recursive: true });
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    }
-  } catch (err) {
-    // keep defaults if parsing fails
+// Configuración persistente
+const store = new Store({
+  name: 'config',
+  defaults: {
+    pomodoro: {},
+    flashcards: { list: [] },
+    notes: [],
+    quizzes: [],
+    snippets: [],
+    todos: [],
+    favorites: [],
+    history: []
   }
+});
+
+let mainWindow;
+
+function getBaseDir() {
+  if (app.isPackaged) {
+    return process.resourcesPath;
+    }
+  return __dirname.split(path.sep).slice(0, -1).join(path.sep);
 }
 
-function saveConfig(partial) {
-  config = { ...config, ...partial };
-  try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  } catch (_) {}
-}
+function createWindow() {
+  console.log('=== CREANDO VENTANA ===');
+  console.log('App packaged:', app.isPackaged);
+  console.log('Base dir:', getBaseDir());
 
-function isExcluded(name) {
-  const lower = name.toLowerCase();
-  return config.excludePatterns.some((p) => lower.includes(p));
-}
-
-// Escanear aplicaciones UWP (Microsoft Store) y todas las aplicaciones instaladas
-function scanUWPApps(callback) {
-  const psScript = `
-    $ErrorActionPreference = 'SilentlyContinue'
-    $apps = @()
+  const isPackaged = app.isPackaged;
+  const baseDir = getBaseDir();
+  
+  // Determinar ruta del preload
+  let preloadPath;
+  if (isPackaged) {
+    // En producción, electron-vite copia preload.js a out/preload/index.js
+    // Pero también puede estar en resourcesPath
+    const possiblePaths = [
+      path.join(process.resourcesPath, 'preload.js'),
+      path.join(process.resourcesPath, 'out', 'preload', 'index.js'),
+      path.join(__dirname, 'preload.js'),
+      path.join(__dirname, '..', 'preload.js')
+    ];
     
-    # Método 1: Obtener aplicaciones UWP usando Get-StartApps (más rápido)
-    try {
-      Get-StartApps | ForEach-Object {
-        if ($_.Name -and $_.AppId) {
-          $apps += [PSCustomObject]@{
-            Name = $_.Name
-            AppId = $_.AppId
-            Type = 'UWP'
-            Source = 'StartApps'
-          }
-        }
+    for (const possiblePath of possiblePaths) {
+      if (fs.existsSync(possiblePath)) {
+        preloadPath = possiblePath;
+        break;
       }
-    } catch {
-      Write-Host "Error Get-StartApps: $_" -ForegroundColor Yellow
     }
     
-    # Método 2: Obtener paquetes AppX (Microsoft Store apps) usando Get-AppxPackage
-    # Incluir todas las apps instaladas, excluyendo solo frameworks, recursos y componentes del sistema muy específicos
-    try {
-      Get-AppxPackage | Where-Object {
-        $_.Name -and 
-        $_.IsFramework -eq $false -and
-        $_.IsResourcePackage -eq $false -and
-        # Excluir solo componentes del sistema muy técnicos, pero incluir apps útiles de Microsoft Store
-        ($_.Name -notmatch '^Microsoft\.Windows\.(ContentDeliveryManager|PCASvc|PushNotifications|PushToInstall|ShellExperienceHost|Search|AppXDeploymentServer|DesktopAppInstaller|WindowsUpdate|UpdateAssistant|SecureBoot|Recovery|Reset)' -or
-         $_.Name -like '*WhatsApp*' -or $_.Name -like '*Spotify*' -or $_.Name -like '*Discord*' -or
-         $_.Name -like '*Chrome*' -or $_.Name -like '*Firefox*' -or $_.Name -like '*VSCode*' -or
-         $_.Name -like '*Teams*' -or $_.Name -like '*Zoom*' -or $_.Name -like '*Slack*' -or
-         $_.Name -like '*Copilot*' -or $_.Name -like '*Sticky*' -or $_.Name -like '*Xbox*' -or
-         ($_.Name -like '*Microsoft.*' -and $_.Name -notlike '*Microsoft.Windows.*'))
-      } | ForEach-Object {
-        $packageName = $_.Name
-        $displayName = if ($_.InstallLocation) {
-          # Intentar obtener el nombre de display desde el manifest
-          try {
-            $manifestPath = Join-Path $_.InstallLocation "AppxManifest.xml"
-            if (Test-Path $manifestPath) {
-              $manifest = [xml](Get-Content $manifestPath)
-              $displayName = $manifest.Package.Properties.DisplayName
-              if (-not $displayName) {
-                $displayName = $manifest.Package.Properties.Name
-              }
-              if (-not $displayName) {
-                $displayName = $packageName
-              }
-            } else {
-              $displayName = $packageName
-            }
-          } catch {
-            $displayName = $packageName
-          }
-        } else {
-          $displayName = $packageName
-        }
+    if (!preloadPath) {
+      console.error('❌ No se encontró preload.js en producción');
+      preloadPath = path.join(process.resourcesPath, 'preload.js'); // Fallback
+    }
+  } else {
+    preloadPath = path.join(__dirname, 'preload.js');
+  }
+  
+  console.log('📦 Preload path:', preloadPath);
+  console.log('📦 Preload existe:', fs.existsSync(preloadPath));
+
+  mainWindow = new BrowserWindow({
+    width: 800,
+    height: 420,
+    show: false, // No mostrar hasta que esté listo
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: !isPackaged ? false : true,
+    skipTaskbar: !isPackaged ? false : true,
+    backgroundColor: '#1a1a2e',
+    webPreferences: {
+      preload: preloadPath,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  });
+
+  mainWindow.setMenuBarVisibility(false);
+
+  // Eventos de la ventana
+  mainWindow.on('blur', () => {
+    if (isPackaged && mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.hide();
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('❌ Error cargando:', errorCode, errorDescription, validatedURL);
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('✅ Contenido cargado exitosamente');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.center();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  // Cargar contenido según el entorno
+  if (!isPackaged) {
+    // DESARROLLO: Intentar Vite primero, luego archivo local
+    const devPort = process.env.VITE_DEV_SERVER_PORT || process.env.PORT || '5174';
+    const devUrl = `http://localhost:${devPort}`;
+    
+    console.log('🔍 [DEV] Intentando cargar desde Vite:', devUrl);
+    
+    mainWindow.loadURL(devUrl)
+      .then(() => {
+        console.log('✅ [DEV] Cargado desde Vite dev server');
+      })
+      .catch((err) => {
+        console.log('⚠️ [DEV] Vite no disponible, intentando archivo local...');
+        console.log('Error:', err.message);
         
-        # Obtener AppId para lanzar la app
-        $appId = $null
-        try {
-          $manifestPath = Join-Path $_.InstallLocation "AppxManifest.xml"
-          if (Test-Path $manifestPath) {
-            $manifest = [xml](Get-Content $manifestPath)
-            $appId = $manifest.Package.Applications.Application.Id
-            if (-not $appId) {
-              $appId = $manifest.Package.Applications.Application[0].Id
-            }
-            if ($appId -and $packageName) {
-              $fullAppId = "$($packageName)!$appId"
-            } else {
-              $fullAppId = $packageName
-            }
-          } else {
-            $fullAppId = $packageName
-          }
-        } catch {
-          $fullAppId = $packageName
-        }
-        
-        $apps += [PSCustomObject]@{
-          Name = $displayName
-          AppId = $fullAppId
-          Type = 'UWP'
-          Source = 'AppxPackage'
-          PackageName = $packageName
-        }
-      }
-    } catch {
-      Write-Host "Error Get-AppxPackage: $_" -ForegroundColor Yellow
-    }
-    
-    # Método 3: Obtener aplicaciones desde AppxManifest en WindowsApps (solo para usuario actual)
-    try {
-      $windowsAppsPath = "$env:ProgramFiles\\WindowsApps"
-      if (Test-Path $windowsAppsPath) {
-        Get-ChildItem -Path $windowsAppsPath -Directory -ErrorAction SilentlyContinue | 
-          Where-Object { $_.Name -match '^[A-Za-z]' } | 
-          ForEach-Object {
-            $manifestPath = Join-Path $_.FullName "AppxManifest.xml"
-            if (Test-Path $manifestPath) {
-              try {
-                $manifest = [xml](Get-Content $manifestPath)
-                $packageName = $manifest.Package.Identity.Name
-                $displayName = $manifest.Package.Properties.DisplayName
-                if (-not $displayName) {
-                  $displayName = $manifest.Package.Properties.Name
-                }
-                if (-not $displayName) {
-                  $displayName = $packageName
-                }
-                
-                $appId = $manifest.Package.Applications.Application.Id
-                if (-not $appId) {
-                  $appId = $manifest.Package.Applications.Application[0].Id
-                }
-                if ($appId -and $packageName) {
-                  $fullAppId = "$($packageName)!$appId"
-                } else {
-                  $fullAppId = $packageName
-                }
-                
-                # Solo agregar si no existe ya
-                $exists = $apps | Where-Object { $_.AppId -eq $fullAppId }
-                if (-not $exists) {
-                  $apps += [PSCustomObject]@{
-                    Name = $displayName
-                    AppId = $fullAppId
-                    Type = 'UWP'
-                    Source = 'WindowsApps'
-                    PackageName = $packageName
-                  }
-                }
-              } catch {}
-            }
-          }
-      }
-    } catch {
-      Write-Host "Error escaneando WindowsApps: $_" -ForegroundColor Yellow
-    }
-    
-    # Método 4: Buscar aplicaciones en AppData\Local (WhatsApp, Electron apps, etc.)
-    try {
-      $localAppData = $env:LOCALAPPDATA
-      if ($localAppData) {
-        Get-ChildItem -Path $localAppData -Directory -ErrorAction SilentlyContinue | 
-          Where-Object { 
-            $_.Name -match '^[A-Z]' -and 
-            $_.Name -notmatch '^Microsoft|^Windows|^Temp|^Cache'
-          } | ForEach-Object {
-            $appDir = $_.FullName
-            # Buscar ejecutables principales
-            $exeFiles = Get-ChildItem -Path $appDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue -Depth 2 |
-              Where-Object { 
-                $_.Name -notmatch 'uninstall|update|installer|setup|crash|service' -and
-                $_.Directory.Name -notmatch 'uninstall|update|installer|setup|crash|service'
-              } | Select-Object -First 1
-            
-            if ($exeFiles) {
-              $exeFile = $exeFiles[0]
-              $appName = $_.Name
-              # Intentar obtener nombre más descriptivo del ejecutable
-              if ($exeFile.Name -ne $appName) {
-                $appName = $exeFile.BaseName
-              }
-              
-              $apps += [PSCustomObject]@{
-                Name = $appName
-                AppId = $exeFile.FullName
-                Path = $exeFile.FullName
-                Type = 'LocalApp'
-                Source = 'AppDataLocal'
-              }
-            }
-          }
-      }
-    } catch {
-      Write-Host "Error escaneando AppData\Local: $_" -ForegroundColor Yellow
-    }
-    
-    # Método 5: Obtener aplicaciones instaladas desde Uninstall Registry
-    $regPaths = @(
-      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
-      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
-      'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
-    )
-    
-    foreach ($regPath in $regPaths) {
-      try {
-        Get-ItemProperty $regPath -ErrorAction SilentlyContinue | Where-Object {
-          $_.DisplayName -and 
-          $_.DisplayName -notmatch '^Update|^Hotfix|^Security Update|^KB' -and
-          $_.SystemComponent -ne 1 -and
-          $_.WindowsInstaller -ne 1 -and
-          $_.ParentName -ne 'Microsoft Corporation'
-        } | ForEach-Object {
-          # Intentar obtener el ejecutable desde InstallLocation o UninstallString
-          $exePath = $null
-          if ($_.InstallLocation -and (Test-Path $_.InstallLocation)) {
-            $exeName = $_.DisplayName -replace '[^a-zA-Z0-9]', ''
-            $possibleExes = Get-ChildItem -Path $_.InstallLocation -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue -Depth 1 |
-              Where-Object { $_.Name -notmatch 'uninstall|update|installer|setup' } | Select-Object -First 1
-            if ($possibleExes) {
-              $exePath = $possibleExes.FullName
+        // Intentar archivos locales después de un delay
+        setTimeout(() => {
+          const paths = [
+            path.join(baseDir, 'dist-electron', 'renderer', 'index.html'),
+            path.join(baseDir, 'out', 'renderer', 'index.html'),
+            path.join(baseDir, 'src', 'renderer', 'index.html')
+          ];
+          
+          let loaded = false;
+          for (const htmlPath of paths) {
+            if (fs.existsSync(htmlPath)) {
+              console.log('📄 [DEV] Cargando desde archivo:', htmlPath);
+              mainWindow.loadFile(htmlPath)
+                .then(() => {
+                  console.log('✅ [DEV] Cargado desde archivo exitosamente');
+                })
+                .catch((e) => {
+                  console.error('❌ [DEV] Error cargando archivo:', e.message);
+                });
+              loaded = true;
+              break;
             }
           }
           
-          $apps += [PSCustomObject]@{
-            Name = $_.DisplayName
-            AppId = if ($exePath) { $exePath } else { $_.PSChildName }
-            Path = if ($exePath) { $exePath } else { $_.DisplayName }
-            Type = 'Registry'
-            Source = 'UninstallRegistry'
+          if (!loaded) {
+            console.error('❌ [DEV] No se encontró ningún archivo HTML');
+            const fallbackHtml = '<html><body style="background:#1a1a2e;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><div><h1>Dev Launcher</h1><p>Esperando servidor Vite...</p></div></body></html>';
+            mainWindow.loadURL(`data:text/html,${encodeURIComponent(fallbackHtml)}`);
           }
-        }
-      } catch {}
-    }
+        }, 2000);
+      });
+  } else {
+    // PRODUCCIÓN: Cargar desde out/renderer
+    const rendererPath = path.join(process.resourcesPath, 'out', 'renderer', 'index.html');
+    console.log('📦 [PROD] Cargando desde:', rendererPath);
+    console.log('📦 [PROD] Archivo existe:', fs.existsSync(rendererPath));
     
-    # Eliminar duplicados por AppId
-    $uniqueApps = $apps | Sort-Object Name -Unique | Group-Object AppId | ForEach-Object {
-      $_.Group[0]
-    }
-    
-    $uniqueApps | ConvertTo-Json -Compress
-  `;
-  
-  exec(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '`"')}"`, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
-    const results = [];
-    if (error) {
-      console.error('Error escaneando UWP/Installed apps:', error.message);
-    }
-    if (stdout && stdout.trim()) {
-      try {
-        const apps = JSON.parse(stdout);
-        const appsArray = Array.isArray(apps) ? apps : [apps];
-        appsArray.forEach(app => {
-          if (app && app.Name && !isExcluded(app.Name)) {
-            // Si es UWP, usar el método especial
-            if (app.Type === 'UWP' && app.AppId) {
-              results.push({
-                id: `uwp:${app.AppId}`,
-                name: app.Name,
-                path: app.AppId,
-                ext: '.uwp',
-                type: 'uwp'
-              });
-            } else if (app.Type === 'LocalApp' && app.Path) {
-              // Aplicaciones de AppData\Local con ruta directa
-              results.push({
-                id: `localapp:${app.Path}`,
-                name: app.Name,
-                path: app.Path,
-                ext: path.extname(app.Path).toLowerCase() || '.exe',
-                type: 'registry' // Usar tipo registry para manejar igual
-              });
-            } else if (app.Path && fs.existsSync(app.Path)) {
-              // Si tiene una ruta válida al ejecutable
-              results.push({
-                id: `installed:${app.Path}`,
-                name: app.Name,
-                path: app.Path,
-                ext: path.extname(app.Path).toLowerCase() || '.exe',
-                type: 'registry'
-              });
-            } else {
-              // Para otras aplicaciones, intentar encontrar el ejecutable
-              results.push({
-                id: `installed:${app.AppId || app.Name}`,
-                name: app.Name,
-                path: app.Name, // Se buscará el ejecutable por nombre
-                ext: '.exe',
-                type: 'installed'
-              });
-            }
-          }
-        });
-      } catch (e) {
-        console.error('Error parsing apps:', e, stdout.substring(0, 200));
-      }
-    }
-    callback(results);
-  });
+    mainWindow.loadFile(rendererPath)
+      .then(() => {
+        console.log('✅ [PROD] Cargado exitosamente');
+      })
+      .catch((err) => {
+        console.error('❌ [PROD] Error cargando:', err);
+      });
+  }
 }
 
-// Escanear programas desde el registro de Windows y ejecutables comunes
-function scanRegistryApps(callback) {
-  const psScript = `
-    $ErrorActionPreference = 'SilentlyContinue'
-    $apps = @()
-    
-    # App Paths Registry
-    $paths = @(
-      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths',
-      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths'
-    )
-    foreach ($regPath in $paths) {
-      if (Test-Path $regPath) {
-        Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | ForEach-Object {
-          $name = $_.PSChildName -replace '\\.exe$', ''
-          $exePath = $_.GetValue('')
-          if ($exePath -and (Test-Path $exePath)) {
-            $apps += [PSCustomObject]@{
-              Name = $name
-              Path = $exePath
-              Type = 'AppPath'
-            }
-          }
-        }
-      }
-    }
-    
-    # Buscar ejecutables comunes en múltiples ubicaciones
-    $programDirs = @()
-    if ($env:ProgramFiles) { $programDirs += $env:ProgramFiles }
-    if ($env:ProgramFiles -and (Test-Path (Join-Path $env:ProgramFiles '..' 'Program Files (x86)'))) { 
-      $programDirs += (Join-Path $env:ProgramFiles '..' 'Program Files (x86)')
-    }
-    if ($env:LOCALAPPDATA) { $programDirs += $env:LOCALAPPDATA }
-    if ($env:APPDATA) { 
-      # Buscar en AppData\Roaming para aplicaciones portables
-      $roamingApps = Join-Path $env:APPDATA 'Microsoft' 'Windows' 'Start Menu' 'Programs'
-      if (Test-Path $roamingApps) { $programDirs += $roamingApps }
-    }
-    
-    foreach ($progDir in $programDirs) {
-      if (Test-Path $progDir) {
-        try {
-          Get-ChildItem -Path $progDir -Recurse -Filter *.exe -ErrorAction SilentlyContinue -Depth 3 | 
-            Where-Object { 
-              $_.Name -notmatch 'uninstall|setup|install|update|crash|service|helper|launcher' -and
-              $_.Directory.Name -notmatch 'uninstall|setup|install|update|crash|service|helpers|tools|binaries' -and
-              $_.FullName -notmatch '\\Tools\\|\\Binaries\\|\\SDK\\|\\Debug\\|\\Release\\|\\x86\\|\\x64\\'
-            } |
-            Select-Object -First 500 | ForEach-Object {
-              # Intentar obtener nombre más descriptivo
-              $appName = $_.BaseName
-              # Si el directorio tiene un nombre descriptivo, usarlo
-              $parentDir = $_.Directory.Name
-              if ($parentDir -and $parentDir -notmatch '^[0-9]|^v[0-9]' -and $parentDir.Length -gt 3) {
-                $appName = $parentDir
-              }
-              
-              $apps += [PSCustomObject]@{
-                Name = $appName
-                Path = $_.FullName
-                Type = 'Executable'
-              }
-            }
-        } catch {}
-      }
-    }
-    
-    # Método adicional: Buscar en PATH del sistema
-    try {
-      $pathEnv = $env:PATH -split ';'
-      foreach ($pathDir in $pathEnv) {
-        if ($pathDir -and (Test-Path $pathDir)) {
-          try {
-            Get-ChildItem -Path $pathDir -Filter *.exe -ErrorAction SilentlyContinue | 
-              Where-Object { $_.Name -notmatch '^uninstall|^setup' } | ForEach-Object {
-                $apps += [PSCustomObject]@{
-                  Name = $_.BaseName
-                  Path = $_.FullName
-                  Type = 'PathExecutable'
-                }
-              }
-          } catch {}
-        }
-      }
-    } catch {}
-    
-    $apps | Sort-Object Name -Unique | ConvertTo-Json -Compress
-  `;
-  
-  exec(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '`"')}"`, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
-    const results = [];
-    if (error) {
-      console.error('Error escaneando registry/executables:', error.message);
-    }
-    if (stdout && stdout.trim()) {
-      try {
-        const apps = JSON.parse(stdout);
-        const appsArray = Array.isArray(apps) ? apps : [apps];
-        appsArray.forEach(app => {
-          if (app && app.Name && app.Path && !isExcluded(app.Name)) {
-            results.push({
-              id: `reg:${app.Path}`,
-              name: app.Name,
-              path: app.Path,
-              ext: path.extname(app.Path).toLowerCase() || '.exe',
-              type: 'registry'
-            });
-          }
-        });
-      } catch (e) {
-        console.error('Error parsing registry apps:', e, stdout.substring(0, 200));
-      }
-    }
-    callback(results);
-  });
-}
+// Función simplificada para escanear aplicaciones
+function scanAllApps() {
+  const results = [];
+  const startTime = Date.now();
 
 // Escanear Menú de Inicio
-function scanStartMenu() {
-  const results = [];
   const startDirs = [
     path.join(process.env.ProgramData || 'C:/ProgramData', 'Microsoft/Windows/Start Menu/Programs'),
     path.join(process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData/Roaming'), 'Microsoft/Windows/Start Menu/Programs')
   ];
 
   const allowedExt = new Set(['.lnk', '.url', '.appref-ms']);
+  const seenIds = new Set(); // Para evitar duplicados
 
-  function walk(dir) {
-    let entries = [];
+  function walk(dir, depth = 0) {
+    // Limitar profundidad para evitar bucles infinitos
+    if (depth > 10) return;
+
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch (_) {
+      if (!fs.existsSync(dir)) {
       return;
     }
+      
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      
     for (const entry of entries) {
+        try {
       const full = path.join(dir, entry.name);
+          
       if (entry.isDirectory()) {
-        walk(full);
+            walk(full, depth + 1);
       } else {
         const ext = path.extname(entry.name).toLowerCase();
         if (allowedExt.has(ext)) {
-          const displayName = entry.name.replace(ext, '');
-          if (!isExcluded(displayName)) {
+              const displayName = entry.name.replace(ext, '').trim();
+              
+              // Evitar nombres vacíos y duplicados
+              if (displayName && !seenIds.has(full)) {
+                seenIds.add(full);
             results.push({
               id: full,
               name: displayName,
@@ -506,675 +230,285 @@ function scanStartMenu() {
           }
         }
       }
+        } catch (entryError) {
+          // Ignorar errores de archivos individuales
+          continue;
+        }
+      }
+    } catch (e) {
+      // Ignorar errores de directorios
+      console.error(`Error escaneando directorio ${dir}:`, e.message);
     }
   }
 
-  for (const d of startDirs) walk(d);
+  console.log('🔍 Iniciando escaneo de aplicaciones...');
+  
+  for (const d of startDirs) {
+    if (fs.existsSync(d)) {
+      console.log(`📁 Escaneando: ${d}`);
+      walk(d);
+    } else {
+      console.log(`⚠️ Directorio no existe: ${d}`);
+    }
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`✓ Escaneadas ${results.length} aplicaciones en ${duration}ms`);
+  
   return results;
 }
 
-// Función principal que combina todas las fuentes
-function scanAllApps() {
-  console.log('🔍 Escaneando aplicaciones instaladas...');
-  console.log('   Fuentes: Menú de Inicio, UWP/Store, Registro, Program Files, AppData, PATH');
-  const allResults = [];
-  
-  // Escanear Menú de Inicio (síncrono) - más rápido y confiable
-  const startMenuResults = scanStartMenu();
-  allResults.push(...startMenuResults);
-  console.log(`✓ Menú de Inicio: ${startMenuResults.length} aplicaciones encontradas`);
-  
-  let completedScans = 0;
-  const totalAsyncScans = 2; // UWP/Installed + Registry/Executables
-  
-  function finalizeScan() {
-    completedScans++;
-    if (completedScans === totalAsyncScans) {
-      // Eliminar duplicados por nombre y ruta
-      const byKey = new Map();
-      const byName = new Map(); // Para evitar duplicados por nombre similar
-      
-      for (const r of allResults) {
-        const nameKey = r.name.toLowerCase().trim();
-        const fullKey = `${nameKey}::${r.path.toLowerCase()}`;
-        
-        // Si ya existe uno con el mismo nombre, preferir según tipo
-        if (byName.has(nameKey)) {
-          const existing = byName.get(nameKey);
-          // Preferir: shortcut > registry > uwp > installed
-          const priority = { 'shortcut': 4, 'registry': 3, 'uwp': 2, 'installed': 1 };
-          const existingPriority = priority[existing.type] || 0;
-          const newPriority = priority[r.type] || 0;
-          if (newPriority <= existingPriority) {
-            continue; // Mantener el existente
-          }
-        }
-        
-        if (!byKey.has(fullKey)) {
-          byKey.set(fullKey, r);
-          byName.set(nameKey, r);
-        } else {
-          // Preferir shortcuts sobre otros tipos si hay duplicados
-          const existing = byKey.get(fullKey);
-          if (r.type === 'shortcut' && existing.type !== 'shortcut') {
-            byKey.set(fullKey, r);
-            byName.set(nameKey, r);
-          }
-        }
-      }
-      
-      appIndex = Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name));
-      console.log(`\n✅ Escaneo completado: ${appIndex.length} aplicaciones únicas encontradas`);
-      console.log(`   - Menú de Inicio: ${startMenuResults.length}`);
-      console.log(`   - Total antes de deduplicar: ${allResults.length}`);
-      console.log(`   - Después de deduplicar: ${appIndex.length}`);
-      
-      // Mostrar estadísticas por tipo
-      const byType = {};
-      appIndex.forEach(app => {
-        byType[app.type] = (byType[app.type] || 0) + 1;
-      });
-      console.log(`   - Por tipo:`, byType);
-      
-      // Notificar al renderer si la ventana está lista
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('apps-updated', appIndex.length);
-      }
-    }
-  }
-  
-  // Escanear UWP/Installed Apps (asíncrono)
-  scanUWPApps((uwpResults) => {
-    console.log(`✓ UWP/Store/Installed: ${uwpResults.length} aplicaciones encontradas`);
-    allResults.push(...uwpResults);
-    finalizeScan();
-  });
-  
-  // Escanear Registry/Executables (asíncrono)
-  scanRegistryApps((regResults) => {
-    console.log(`✓ Registry/Executables/PATH: ${regResults.length} aplicaciones encontradas`);
-    allResults.push(...regResults);
-    finalizeScan();
-  });
-  
-  // Timeout de seguridad por si alguna función asíncrona falla
-  setTimeout(() => {
-    if (completedScans < totalAsyncScans) {
-      console.log(`⚠ Advertencia: Solo ${completedScans}/${totalAsyncScans} escaneos completaron. Continuando con los resultados disponibles.`);
-      // Forzar finalización si aún no se completó
-      while (completedScans < totalAsyncScans) {
-        completedScans++;
-        if (completedScans === totalAsyncScans) {
-          finalizeScan();
-        }
-      }
-    }
-  }, 8000);
-}
-
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 800,
-    height: 420,
-    show: false,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: {
-      preload: path.join(getBaseDir(), 'src', 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  });
-
-  mainWindow.setMenuBarVisibility(false);
-  
-  // Cargar el archivo HTML y mostrar la ventana cuando esté lista
-  const baseDir = getBaseDir();
-  
-  // En desarrollo, intentar cargar desde Vite dev server, si no, usar archivo local
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  
-  if (isDev) {
-    // Intentar cargar desde Vite dev server (si está corriendo)
-    mainWindow.loadURL('http://localhost:5173')
-      .then(() => {
-        mainWindow.center();
-        mainWindow.show();
-        mainWindow.focus();
-      })
-      .catch(() => {
-        // Si Vite no está corriendo, cargar archivo local
-        const rendererPath = path.join(baseDir, 'src', 'renderer', 'index.html');
-        mainWindow.loadFile(rendererPath)
-          .then(() => {
-            mainWindow.center();
-            mainWindow.show();
-            mainWindow.focus();
-          })
-          .catch((err) => {
-            console.error('Error cargando el archivo HTML:', err);
-          });
-      });
-  } else {
-    // En producción, cargar desde archivo
-    const rendererPath = path.join(baseDir, 'dist-electron', 'renderer', 'index.html');
-    mainWindow.loadFile(rendererPath)
-      .then(() => {
-        mainWindow.center();
-        mainWindow.show();
-        mainWindow.focus();
-      })
-      .catch((err) => {
-        console.error('Error cargando el archivo HTML:', err);
-      });
-  }
-
-  mainWindow.on('blur', () => {
-    if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
-  });
-
-  // Manejo de errores en la ventana
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.error('Error cargando contenido:', errorCode, errorDescription);
-  });
-}
-
-// ===== FIX PRINCIPAL: Registrar hotkey del launcher =====
-function registerHotkey() {
-  // Asegurar que la ventana esté creada
-  if (!mainWindow) {
-    console.warn('⚠ Ventana principal no creada aún, reintentando en 500ms...');
-    setTimeout(() => registerHotkey(), 500);
-    return;
-  }
-  
-  const handleHotkey = () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    console.log('🔔 Hotkey presionado: Ctrl+Alt+Space');
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      // Centrar en pantalla primaria
-      mainWindow.center();
-      mainWindow.show(); // CAMBIO: usar show() en lugar de showInactive()
-      mainWindow.focus();
-      mainWindow.webContents.send('focus-search');
-    }
-  };
-  
-  // Primero desregistrar solo las variaciones del hotkey principal
-  const hotkeyVariations = [
-    'Ctrl+Alt+Space',
-    'CommandOrControl+Alt+Space',
-    'Control+Alt+Space'
-  ];
-  
-  hotkeyVariations.forEach(hk => {
-    if (globalShortcut.isRegistered(hk)) {
-      globalShortcut.unregister(hk);
-      console.log(`🔓 Desregistrado: ${hk}`);
-    }
-  });
-  
-  let registered = false;
-  let workingHotkey = null;
-  
-  for (const hotkey of hotkeyVariations) {
-    if (registered) break;
+// Función para cargar apps con caché
+async function loadAppsWithCache() {
+  try {
+    const cacheFilePath = getCacheFile();
     
-    console.log(`🔑 Intentando registrar: ${hotkey}`);
-    const ok = globalShortcut.register(hotkey, handleHotkey);
-    
-    if (ok) {
-      console.log(`✅ Hotkey registrado exitosamente: ${hotkey}`);
-      registered = true;
-      workingHotkey = hotkey;
-    } else {
-      console.warn(`❌ No se pudo registrar: ${hotkey}`);
-    }
-  }
-  
-  if (!registered) {
-    console.error('❌ ERROR: No se pudo registrar ningún hotkey.');
-    console.log('💡 Posibles soluciones:');
-    console.log('   1. Otra aplicación está usando Ctrl+Alt+Space');
-    console.log('   2. Intenta cerrar otras apps y reiniciar');
-    console.log('   3. Puedes cambiar el hotkey en Configuración');
-  } else {
-    // Verificar que el hotkey esté registrado
-    const isRegistered = globalShortcut.isRegistered(workingHotkey);
-    console.log(`🔍 Verificación: Hotkey ${workingHotkey} está registrado: ${isRegistered}`);
-  }
-}
-
-// Registrar hotkeys para window management estilo Hyprland
-function registerWindowHotkeys() {
-  const hotkeys = config.windowHotkeys || {};
-  
-  // Tile Grid
-  if (hotkeys.tileGrid) {
-    const ok = globalShortcut.register(hotkeys.tileGrid, () => {
-      windowManager.tileWindows('grid');
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.tileGrid} (Tile Grid)`);
-  }
-  
-  // Tile Vertical
-  if (hotkeys.tileVertical) {
-    const ok = globalShortcut.register(hotkeys.tileVertical, () => {
-      windowManager.tileWindows('vertical');
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.tileVertical} (Tile Vertical)`);
-  }
-  
-  // Tile Horizontal
-  if (hotkeys.tileHorizontal) {
-    const ok = globalShortcut.register(hotkeys.tileHorizontal, () => {
-      windowManager.tileWindows('horizontal');
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.tileHorizontal} (Tile Horizontal)`);
-  }
-  
-  // Mover ventana a la izquierda (o cambiar workspace si está en el borde)
-  if (hotkeys.moveLeft) {
-    const ok = globalShortcut.register(hotkeys.moveLeft, async () => {
-      const activeWindow = await windowManager.getActiveWindow();
-      if (activeWindow) {
-        // Si la ventana ya está en el lado izquierdo, cambiar workspace
-        const screenWidth = screen.getPrimaryDisplay().workAreaSize.width;
-        if (activeWindow.X <= 50) {
-          windowManager.switchVirtualDesktop('previous');
-        } else {
-          windowManager.moveWindowToSide('left');
-        }
-      }
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.moveLeft} (Move Left)`);
-  }
-  
-  // Mover ventana a la derecha (o cambiar workspace si está en el borde)
-  if (hotkeys.moveRight) {
-    const ok = globalShortcut.register(hotkeys.moveRight, async () => {
-      const activeWindow = await windowManager.getActiveWindow();
-      if (activeWindow) {
-        // Si la ventana ya está en el lado derecho, cambiar workspace
-        const screenWidth = screen.getPrimaryDisplay().workAreaSize.width;
-        if (activeWindow.X + activeWindow.Width >= screenWidth - 50) {
-          windowManager.switchVirtualDesktop('next');
-        } else {
-          windowManager.moveWindowToSide('right');
-        }
-      }
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.moveRight} (Move Right)`);
-  }
-  
-  // Centrar ventana
-  if (hotkeys.center) {
-    const ok = globalShortcut.register(hotkeys.center, () => {
-      windowManager.centerActiveWindow();
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.center} (Center)`);
-  }
-  
-  // Maximizar
-  if (hotkeys.maximize) {
-    const ok = globalShortcut.register(hotkeys.maximize, () => {
-      windowManager.maximizeActiveWindow();
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.maximize} (Maximize)`);
-  }
-  
-  // Minimizar
-  if (hotkeys.minimize) {
-    const ok = globalShortcut.register(hotkeys.minimize, () => {
-      windowManager.minimizeActiveWindow();
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.minimize} (Minimize)`);
-  }
-  
-  // Workspace siguiente (opcional, también funciona con moveRight)
-  if (hotkeys.workspaceNext && hotkeys.workspaceNext !== hotkeys.moveRight) {
-    const ok = globalShortcut.register(hotkeys.workspaceNext, () => {
-      windowManager.switchVirtualDesktop('next');
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.workspaceNext} (Workspace Next)`);
-  }
-  
-  // Workspace anterior (opcional, también funciona con moveLeft)
-  if (hotkeys.workspacePrev && hotkeys.workspacePrev !== hotkeys.moveLeft) {
-    const ok = globalShortcut.register(hotkeys.workspacePrev, () => {
-      windowManager.switchVirtualDesktop('previous');
-    });
-    if (ok) console.log(`✓ Window hotkey registrado: ${hotkeys.workspacePrev} (Workspace Prev)`);
-  }
-  
-  console.log('✓ Todos los hotkeys de window management procesados');
-}
-
-function launchItem(filePath, itemType) {
-  // Si es una app UWP, usar el método más confiable para Windows Store apps
-  if (itemType === 'uwp') {
-    // El método más confiable es usar explorer.exe con shell:AppsFolder
-    // El AppID debe estar en formato: PackageFamilyName!AppID
-    const escapedAppId = filePath.replace(/\\/g, '\\\\').replace(/'/g, "''").replace(/"/g, '`"');
-    
-    // Método 1: Usar explorer.exe directamente con shell:AppsFolder (más confiable)
-    const cmd = `explorer.exe shell:AppsFolder\\${escapedAppId}`;
-    exec(cmd, (err1) => {
-      if (err1) {
-        // Método 2: Usar PowerShell Start-Process con el AppID
-        const ps = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Start-Process '${escapedAppId}'"`;
-        exec(ps, (err2) => {
-          if (err2) {
-            // Método 3: Fallback usando PowerShell con explorer
-            const ps2 = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Start-Process explorer.exe -ArgumentList 'shell:AppsFolder\\\\${escapedAppId}'"`;
-            exec(ps2, (err3) => {
-              if (err3) {
-                console.error('Error lanzando app UWP:', filePath, err3);
-              }
-            });
-          }
-        });
-      }
-    });
-    return;
-  }
-  
-  // Para aplicaciones instaladas por nombre, buscar el ejecutable
-  if (itemType === 'installed') {
-    const ps = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Command '${filePath.replace(/"/g, '`"')}' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1"`;
-    exec(ps, (err, stdout) => {
-      if (!err && stdout && stdout.trim()) {
-        const exePath = stdout.trim();
-        shell.openPath(exePath).catch(() => {
-          // Si no se encuentra, intentar abrir directamente
-          shell.openPath(filePath).catch((e) => {
-            console.error('Error lanzando aplicación instalada:', e);
-          });
-        });
+    // Cargar del cache si existe
+    if (fs.existsSync(cacheFilePath)) {
+      const cacheData = fs.readFileSync(cacheFilePath, 'utf-8');
+      const cache = JSON.parse(cacheData);
+      
+      if (Date.now() - cache.timestamp < CACHE_DURATION && Array.isArray(cache.apps)) {
+        console.log(`⚡ Cargado desde caché (${cache.apps.length} apps)`);
+        return cache.apps;
       } else {
-        // Intentar abrir directamente
-        shell.openPath(filePath).catch((e) => {
-          console.error('Error lanzando aplicación:', e);
-        });
+        console.log('🔄 Cache expirado, reescaneando...');
       }
-    });
-    return;
-  }
-  
-  // Para otros tipos (shortcut, registry), usar PowerShell Start-Process
-  const escapedPath = filePath.replace(/\\/g, '/').replace(/"/g, '`"');
-  const ps = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Start-Process -FilePath \"${escapedPath}\""`;
-  exec(ps, (err) => {
-    if (err) {
-      // Fallback: usar shell.openPath
-      shell.openPath(filePath).catch((e) => {
-        console.error('Error lanzando aplicación:', e);
-      });
     }
-  });
-}
-
-// IPC
-// Función para obtener icono de una aplicación
-// Deshabilitada para evitar errores al iniciar
-async function getAppIcon(appPath, appType) {
-  // Retornar null - los iconos están deshabilitados
-  return null;
-}
-
-ipcMain.handle('get-apps', () => {
-  return appIndex;
-});
-
-ipcMain.handle('get-app-icon', async (_e, appPath, appType) => {
-  return await getAppIcon(appPath, appType);
-});
-
-ipcMain.handle('reload-index', () => {
-  scanAllApps();
-  return appIndex;
-});
-
-ipcMain.handle('launch', (_e, targetPath, itemType) => {
-  if (typeof targetPath === 'string') {
-    // Guardar en historial de lanzamientos
-    const app = appIndex.find(a => a.path === targetPath || a.id === targetPath);
-    if (app) {
-      configManager.addLaunchHistory(app);
+    
+    // Escanear si no hay cache válido
+    console.log('🔍 Escaneando aplicaciones...');
+    console.time('⏱️ Apps scan');
+    const apps = scanAllApps();
+    console.timeEnd('⏱️ Apps scan');
+    
+    // Guardar en cache
+    try {
+      fs.writeFileSync(cacheFilePath, JSON.stringify({
+        timestamp: Date.now(),
+        apps
+      }, null, 2));
+      console.log(`💾 Cache guardado exitosamente en: ${cacheFilePath}`);
+    } catch (cacheError) {
+      console.error('⚠️ Error guardando cache:', cacheError.message);
     }
-    launchItem(targetPath, itemType);
+    
+    return apps;
+  } catch (error) {
+    console.error('❌ Error en loadAppsWithCache:', error);
+    // En caso de error, intentar escanear directamente
+    return scanAllApps();
   }
-});
-
-// Guardar búsquedas cuando se hace clic en una app
-ipcMain.on('save-search', (_e, query) => {
-  if (query && query.trim().length >= 2) {
-    configManager.addSearchHistory(query.trim());
-  }
-});
-
-// Función para crear ventana de configuración
-function createSettingsWindow() {
-  if (settingsWindow) {
-    settingsWindow.focus();
-    return;
-  }
-  
-  const baseDir = getBaseDir();
-  const uiConfig = configManager.getUI();
-  
-  settingsWindow = new BrowserWindow({
-    width: uiConfig.windowWidth || 900,
-    height: uiConfig.windowHeight || 600,
-    backgroundColor: '#14141c',
-    webPreferences: {
-      preload: path.join(baseDir, 'src', 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true
-    },
-    title: 'Configuración - Win11 Dev Launcher',
-    show: false,
-    frame: true,
-    resizable: true
-  });
-  
-  settingsWindow.loadFile(path.join(baseDir, 'src', 'renderer', 'settings.html'));
-  
-  settingsWindow.once('ready-to-show', () => {
-    settingsWindow.show();
-  });
-  
-  settingsWindow.on('closed', () => {
-    settingsWindow = null;
-  });
 }
 
 // IPC Handlers
-ipcMain.handle('get-config', () => {
-  return {
-    hotkeys: configManager.getHotkeys(),
-    ui: configManager.getUI(),
-    scan: configManager.getScanConfig(),
-    windowManagement: configManager.getWindowConfig(),
-    favorites: configManager.getFavorites(),
-    searchHistory: configManager.getSearchHistory(),
-    launchHistory: configManager.getLaunchHistory()
-  };
-});
-
-ipcMain.handle('set-hotkey', (_e, newHotkey) => {
-  if (typeof newHotkey === 'string' && newHotkey.trim()) {
-    saveConfig({ hotkey: newHotkey.trim() });
-    registerHotkey();
+ipcMain.on('scan-apps', async (event) => {
+  console.log('🔍 [IPC] Solicitud de escaneo de aplicaciones recibida');
+  console.log('🔍 [IPC] Sender disponible:', !!event?.sender);
+  console.log('🔍 [IPC] Sender destroyed:', event?.sender?.isDestroyed?.() || 'N/A');
+  
+  try {
+    const apps = await loadAppsWithCache();
+    console.log(`📤 [IPC] Enviando ${apps.length} aplicaciones al renderer`);
+    
+    // Enviar siempre al sender que solicitó (más confiable)
+    if (event?.sender && !event.sender.isDestroyed()) {
+      try {
+        event.sender.send('apps-updated', apps);
+        console.log('✅ [IPC] Apps enviadas al sender exitosamente');
+      } catch (sendError) {
+        console.error('❌ [IPC] Error enviando al sender:', sendError);
+        // Fallback: intentar con mainWindow
+      if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('apps-updated', apps);
+          console.log('✅ [IPC] Apps enviadas a mainWindow (fallback)');
+        }
+      }
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      // Fallback: enviar a la ventana principal
+      mainWindow.webContents.send('apps-updated', apps);
+      console.log('✅ [IPC] Apps enviadas a mainWindow exitosamente');
+    } else {
+      console.warn('⚠️ [IPC] No hay ventana disponible para enviar apps');
+      console.warn('⚠️ [IPC] mainWindow existe:', !!mainWindow);
+      console.warn('⚠️ [IPC] mainWindow destroyed:', mainWindow?.isDestroyed?.() || 'N/A');
+    }
+  } catch (error) {
+    console.error('❌ [IPC] Error en scan-apps:', error);
+    // Enviar array vacío en caso de error
+    try {
+      if (event?.sender && !event.sender.isDestroyed()) {
+        event.sender.send('apps-updated', []);
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('apps-updated', []);
+      }
+    } catch (sendError) {
+      console.error('❌ [IPC] Error enviando array vacío:', sendError);
+    }
   }
-  return config.hotkey;
 });
 
-// IPC Handlers para window management
-ipcMain.handle('tile-windows', async (_e, layout) => {
-  return await windowManager.tileWindows(layout || 'grid');
-});
+ipcMain.on('launch', (event, app) => {
+  console.log('🚀 Lanzando aplicación:', app.name);
+  try {
+    // Guardar en historial
+    const history = store.get('history', []);
+    history.unshift({
+      id: app.id,
+      timestamp: Date.now(),
+      appName: app.name
+    });
+    store.set('history', history.slice(0, 100)); // Limitar a 100
 
-ipcMain.handle('move-window-side', async (_e, direction) => {
-  return await windowManager.moveWindowToSide(direction);
-});
-
-ipcMain.handle('center-window', async () => {
-  return await windowManager.centerActiveWindow();
-});
-
-ipcMain.handle('maximize-window', async () => {
-  return await windowManager.maximizeActiveWindow();
-});
-
-ipcMain.handle('minimize-window', async () => {
-  return await windowManager.minimizeActiveWindow();
-});
-
-ipcMain.handle('switch-workspace', async (_e, direction) => {
-  return await windowManager.switchVirtualDesktop(direction);
-});
-
-ipcMain.handle('get-windows', async () => {
-  return await windowManager.getAllWindows();
-});
-
-ipcMain.handle('get-active-window', async () => {
-  return await windowManager.getActiveWindow();
-});
-
-// Config API Handlers
-ipcMain.handle('set-config', (_e, section, key, value) => {
-  if (section === 'ui') {
-    configManager.setUI(key, value);
-  } else if (section === 'scan') {
-    configManager.setScanConfig(key, value);
-  } else if (section === 'windowManagement') {
-    configManager.setWindowConfig(key, value);
-  } else if (section === 'search' && key === 'lastQuery') {
-    // Guardar búsqueda cuando se lanza una app
-    configManager.addSearchHistory(value);
+    if (app.type === 'uwp' && app.path.includes('!')) {
+      // Aplicación UWP
+      exec(`start shell:AppsFolder\\${app.path}`, (error) => {
+        if (error) {
+          console.error('Error lanzando UWP app:', error);
+        }
+      });
+  } else {
+      // Aplicación normal
+      shell.openPath(app.path).catch(err => {
+        console.error('Error abriendo:', err);
+        // Intentar como comando
+        exec(`start "" "${app.path}"`, (error) => {
+          if (error) {
+            console.error('Error ejecutando:', error);
+          }
+        });
+      });
+    }
+  } catch (error) {
+    console.error('Error en launch:', error);
   }
-  return true;
 });
 
-ipcMain.handle('get-favorites', () => {
-  return configManager.getFavorites();
+ipcMain.on('window-action', (event, { action, target }) => {
+  console.log('🪟 Acción de ventana:', action, target);
+  // Aquí puedes agregar lógica de gestión de ventanas si es necesario
 });
 
-ipcMain.handle('add-favorite', (_e, appId) => {
-  configManager.addFavorite(appId);
-  return true;
+ipcMain.on('hide-window', () => {
+  if (mainWindow && mainWindow.isVisible()) {
+      mainWindow.hide();
+      }
 });
 
-ipcMain.handle('remove-favorite', (_e, appId) => {
-  configManager.removeFavorite(appId);
-  return true;
+// IPC Handlers para configuración
+ipcMain.handle('config-set', (event, { section, key, value }) => {
+  try {
+    const current = store.get(section, {});
+    current[key] = value;
+    store.set(section, current);
+    return { success: true };
+  } catch (error) {
+    console.error('Error guardando config:', error);
+    return { success: false, error: error.message };
+        }
 });
 
-ipcMain.handle('get-search-history', () => {
-  return configManager.getSearchHistory();
-});
-
-ipcMain.handle('get-launch-history', () => {
-  return configManager.getLaunchHistory();
-});
-
-ipcMain.handle('clear-search-history', () => {
-  configManager.clearSearchHistory();
-  return true;
-});
-
-ipcMain.handle('clear-launch-history', () => {
-  configManager.clearLaunchHistory();
-  return true;
-});
-
-ipcMain.handle('export-config', () => {
-  return configManager.export();
-});
-
-ipcMain.handle('import-config', (_e, configData) => {
-  return configManager.import(configData);
-});
-
-ipcMain.handle('reset-config', () => {
-  configManager.reset();
-  return true;
-});
-
-ipcMain.handle('open-settings', () => {
-  createSettingsWindow();
-  return true;
-});
+ipcMain.handle('config-get', () => {
+  try {
+    return store.store;
+  } catch (error) {
+    console.error('Error obteniendo config:', error);
+    return {};
+    }
+  });
 
 app.whenReady().then(() => {
-  try {
-    loadConfig();
-    scanAllApps(); // Escanear todas las aplicaciones
-    createWindow();
-    
-    // Registrar hotkeys después de que la ventana esté lista
-    setTimeout(() => {
-      registerHotkey(); // Registrar primero el hotkey principal
-      registerWindowHotkeys(); // Luego los hotkeys de window management
-      
-      console.log(`\n🎯 Aplicación iniciada correctamente.`);
-      console.log(`📌 Presiona ${config.hotkey} (Ctrl+Alt+Space) para abrir/cerrar el launcher.\n`);
-      console.log('Hotkeys de window management disponibles:');
-      console.log('  - Ctrl+Alt+T: Organizar ventanas en grid');
-      console.log('  - Ctrl+Alt+Shift+T: Organizar verticalmente');
-      console.log('  - Ctrl+Alt+H: Organizar horizontalmente');
-      console.log('  - Ctrl+Alt+Left/Right: Mover ventana a lado / Cambiar workspace');
-      console.log('  - Ctrl+Alt+C: Centrar ventana');
-      console.log('  - Ctrl+Alt+Up/Down: Maximizar/Minimizar\n');
-    }, 1000);
-  } catch (error) {
-    console.error('Error al iniciar la aplicación:', error);
+      // Limpiar cache al iniciar (opcional, descomentar si es necesario)
+      // if (!app.isPackaged) {
+      //   const { session } = require('electron');
+      //   session.defaultSession.clearCache();
+      //   session.defaultSession.clearStorageData();
+      // }
+
+      createWindow();
+
+      // Esperar a que la ventana esté lista antes de enviar apps
+      // El renderer solicitará las apps cuando esté listo
+      // No enviar automáticamente aquí para evitar problemas de timing
+
+  // IPC Handler para limpiar cache
+  ipcMain.on('clear-cache', async () => {
+    try {
+      await session.defaultSession.clearCache();
+      await session.defaultSession.clearStorageData();
+      console.log('✓ Cache de Electron limpiado');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cache-cleared');
+      }
+    } catch (error) {
+      console.error('Error limpiando cache:', error);
+    }
+  });
+
+  // Registrar hotkey para mostrar/ocultar
+  globalShortcut.register('Ctrl+Alt+Space', () => {
+    if (mainWindow) {
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+        } else {
+      mainWindow.center();
+        mainWindow.show();
+      mainWindow.focus();
+        // Enfocar el input de búsqueda
+        if (mainWindow.webContents) {
+      mainWindow.webContents.send('focus-search');
+    }
+        }
+      }
+    });
+
+  // Registrar hotkey para minimizar (Windows+C)
+  // En Windows, la tecla Windows se captura como "Super" o con el código de tecla
+  if (process.platform === 'win32') {
+    // Para Windows, intentar múltiples combinaciones
+    try {
+      // Intentar con Super+C (tecla Windows + C)
+      const registered = globalShortcut.register('Super+C', () => {
+        if (mainWindow && mainWindow.isVisible()) {
+          mainWindow.minimize();
   }
+      });
+      if (registered) {
+        console.log('✓ Hotkey Win+C registrado');
+  }
+    } catch (err) {
+      console.log('No se pudo registrar Super+C directamente');
+      // Alternativa: Ctrl+Win+C
+      try {
+        globalShortcut.register('CommandOrControl+Super+C', () => {
+          if (mainWindow && mainWindow.isVisible()) {
+            mainWindow.minimize();
+          }
+        });
+        console.log('✓ Hotkey Ctrl+Win+C registrado como alternativa');
+      } catch (err2) {
+        console.log('No se pudo registrar hotkey de minimizar');
+      }
+    }
+      } else {
+    // Para Linux/Mac, usar Super+C
+    globalShortcut.register('Super+C', () => {
+      if (mainWindow && mainWindow.isVisible()) {
+        mainWindow.minimize();
+    }
+  });
+}
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
 });
 
-// Manejar errores no capturados
-process.on('uncaughtException', (error) => {
-  console.error('Error no capturado:', error);
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-app.on('window-all-closed', () => {
-  // No hacer nada - mantener la app corriendo en segundo plano
-  // La app solo se cerrará cuando el usuario cierre explícitamente el proceso
-});
-
-// Handler IPC para ocultar la ventana principal
-ipcMain.handle('hide-window', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.hide();
-    return true;
-  }
-  return false;
-});
-
-// Handler IPC para actualizar tema
-ipcMain.handle('update-theme', (_e, theme) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    // Enviar mensaje al renderer para aplicar el tema
-    mainWindow.webContents.send('theme-changed', theme);
-    return true;
-  }
-  return false;
-});
-
-// Escuchar cambios de tema
-ipcMain.on('theme-changed', (_e, theme) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('theme-changed', theme);
-  }
-});

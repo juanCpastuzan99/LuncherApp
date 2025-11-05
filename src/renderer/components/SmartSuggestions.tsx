@@ -1,57 +1,45 @@
-/**
- * Componente para mostrar sugerencias inteligentes
- */
-
 import React from 'react';
-import type { App } from '@shared/types';
 import './SmartSuggestions.css';
 
-interface SmartSuggestion {
-  app: App;
-  reason: string;
-  confidence: number;
+interface App {
+  id: string;
+  name: string;
+  path: string;
+  ext: string;
+  type: string;
 }
 
 interface SmartSuggestionsProps {
-  suggestions: SmartSuggestion[];
-  activeIndex: number;
+  suggestions: App[];
   onSelect: (app: App) => void;
 }
 
-export const SmartSuggestions: React.FC<SmartSuggestionsProps> = ({
-  suggestions,
-  activeIndex,
-  onSelect
-}) => {
+const SmartSuggestions: React.FC<SmartSuggestionsProps> = ({ suggestions, onSelect }) => {
   if (suggestions.length === 0) return null;
-  
+
   return (
     <div className="smart-suggestions">
       <div className="suggestions-header">
         <span className="suggestions-icon">💡</span>
-        <span className="suggestions-title">Sugerencias Inteligentes</span>
+        <span className="suggestions-label">Sugerencias</span>
       </div>
-      <ul className="suggestions-list">
-        {suggestions.map((suggestion, index) => (
-          <li
-            key={suggestion.app.id}
-            className={`suggestion-item ${index === activeIndex ? 'active' : ''}`}
-            onClick={() => onSelect(suggestion.app)}
-            onMouseEnter={() => {
-              // Scroll into view si es necesario
-            }}
+      <div className="suggestions-list">
+        {suggestions.slice(0, 5).map((app) => (
+          <div
+            key={app.id}
+            className="suggestion-item"
+            onClick={() => onSelect(app)}
           >
-            <div className="suggestion-content">
-              <span className="app-name">{suggestion.app.name}</span>
-              <span className="suggestion-reason">{suggestion.reason}</span>
+            <div className="suggestion-icon">
+              {app.type === 'uwp' ? '📱' : app.ext === '.exe' ? '💻' : '📄'}
             </div>
-            <div className="confidence-badge">
-              {Math.round(suggestion.confidence * 100)}%
-            </div>
-          </li>
+            <div className="suggestion-name">{app.name}</div>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 };
+
+export default SmartSuggestions;
 

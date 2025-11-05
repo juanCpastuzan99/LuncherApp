@@ -1,10 +1,17 @@
 /**
- * Componente para mostrar y controlar el temporizador Pomodoro
+ * Componente Pomodoro estilo minimalista para lanzador de apps
+ * Diseño compacto y elegante
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { PomodoroTimer, getPomodoroTimer, type PomodoroStatus } from '../../ai/pomodoro';
 import './PomodoroTimer.css';
+
+interface AlertState {
+  show: boolean;
+  message: string;
+  type: 'work' | 'break';
+}
 
 export const PomodoroTimerComponent: React.FC = () => {
   const [status, setStatus] = useState<PomodoroStatus>({
@@ -15,69 +22,189 @@ export const PomodoroTimerComponent: React.FC = () => {
     phase: 'work'
   });
   const [isPaused, setIsPaused] = useState(false);
+  const [alert, setAlert] = useState<AlertState>({
+    show: false,
+    message: '',
+    type: 'work'
+  });
+  
+  const timerRef = useRef<PomodoroTimer | null>(null);
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastUpdateRef = useRef<number>(Date.now());
+  const isVisibleRef = useRef<boolean>(true);
+
+  const updateStatus = useCallback(() => {
+    if (timerRef.current) {
+      const currentStatus = timerRef.current.getStatus();
+      setStatus(currentStatus);
+      lastUpdateRef.current = Date.now();
+    }
+  }, []);
+
+  const syncAfterBackground = useCallback(async () => {
+    if (!timerRef.current) return;
+
+    const now = Date.now();
+    const timeSinceLastUpdate = Math.floor((now - lastUpdateRef.current) / 1000);
+
+    if (timeSinceLastUpdate > 2) {
+      const timer = await getPomodoroTimer();
+      const currentStatus = timer.getStatus();
+      setStatus(currentStatus);
+      
+      if (status.state !== 'idle' && currentStatus.state !== status.state) {
+        const wasWorking = status.state === 'working';
+        showAlert(wasWorking ? 'work' : 'break');
+      }
+    }
+    
+    updateStatus();
+  }, [status.state, updateStatus]);
 
   useEffect(() => {
-    // Inicializar temporizador de forma asíncrona para restaurar estado
-    getPomodoroTimer().then((timer) => {
-    
-      // Configurar callbacks
-      timer.setOnUpdate((newStatus) => {
-        setStatus(newStatus);
-        setIsPaused(false);
-      });
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = !document.hidden;
+      if (!document.hidden) {
+        syncAfterBackground();
+      }
+    };
 
-      timer.setOnComplete((phase) => {
-        // Mostrar notificación
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const message = phase === 'work' 
-            ? '¡Pomodoro completado! Toma un descanso.' 
-            : '¡Descanso terminado! Listo para trabajar.';
-          new Notification('Pomodoro', {
-            body: message,
-            icon: '/favicon.ico'
-          });
+    const handleFocus = () => {
+      syncAfterBackground();
+    };
+
+    const handleBlur = () => {
+      lastUpdateRef.current = Date.now();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [syncAfterBackground]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const initTimer = async () => {
+      const timer = await getPomodoroTimer();
+      if (!mounted) return;
+
+      timerRef.current = timer;
+
+      timer.setOnUpdate((newStatus) => {
+        if (mounted) {
+          setStatus(newStatus);
+          setIsPaused(false);
+          lastUpdateRef.current = Date.now();
         }
       });
 
-      // Obtener estado inicial
-      setStatus(timer.getStatus());
+      timer.setOnComplete((phase) => {
+        if (mounted) {
+          const isWorkComplete = phase === 'work';
+          showAlert(isWorkComplete ? 'work' : 'break');
+          
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const message = isWorkComplete
+              ? '¡Pomodoro completado! Toma un descanso.'
+              : '¡Descanso terminado! Listo para trabajar.';
+            new Notification('Pomodoro', {
+              body: message,
+              icon: '/favicon.ico',
+              requireInteraction: true
+            });
+          }
+        }
+      });
 
-      // Solicitar permiso para notificaciones
+      const initialStatus = timer.getStatus();
+      if (mounted) {
+        setStatus(initialStatus);
+        lastUpdateRef.current = Date.now();
+      }
+
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
       }
 
-      // Actualizar periódicamente para asegurar sincronización (cada segundo)
-      const updateInterval = setInterval(() => {
-        const currentStatus = timer.getStatus();
-        // Solo actualizar si el estado cambió o el tiempo cambió
-        setStatus((prevStatus) => {
-          if (
-            prevStatus.state !== currentStatus.state ||
-            prevStatus.timeRemaining !== currentStatus.timeRemaining ||
-            prevStatus.currentPomodoro !== currentStatus.currentPomodoro
-          ) {
-            return currentStatus;
-          }
-          return prevStatus;
-        });
-      }, 1000); // Actualizar cada segundo para sincronizar con el temporizador
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+      }
 
-      return () => {
-        clearInterval(updateInterval);
-      };
+      updateIntervalRef.current = setInterval(() => {
+        if (mounted && timerRef.current && isVisibleRef.current) {
+          updateStatus();
+        }
+      }, 500);
+    };
+
+    initTimer();
+
+    return () => {
+      mounted = false;
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+        updateIntervalRef.current = null;
+      }
+    };
+  }, [updateStatus]);
+
+  const showAlert = (type: 'work' | 'break') => {
+    const isWorkComplete = type === 'work';
+    const message = isWorkComplete
+      ? '¡Pomodoro completado!\nToma un descanso'
+      : '¡Descanso terminado!\nListo para trabajar';
+    
+    setAlert({
+      show: true,
+      message,
+      type
     });
-  }, []);
+
+    playNotificationSound();
+
+    setTimeout(() => {
+      setAlert(prev => ({ ...prev, show: false }));
+    }, 8000);
+  };
+
+  const playNotificationSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      [800, 1000].forEach((freq, i) => {
+        setTimeout(() => {
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          oscillator.frequency.value = freq;
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.3);
+        }, i * 150);
+      });
+    } catch (error) {
+      console.log('Audio no disponible');
+    }
+  };
 
   const handleStart = async () => {
     const timer = await getPomodoroTimer();
     if (status.state === 'idle') {
       timer.start();
-      setStatus(timer.getStatus());
+      updateStatus();
     } else if (isPaused) {
       timer.resume();
       setIsPaused(false);
-      setStatus(timer.getStatus());
+      updateStatus();
     }
   };
 
@@ -87,7 +214,7 @@ export const PomodoroTimerComponent: React.FC = () => {
     if (currentStatus.state !== 'idle' && currentStatus.timeRemaining > 0) {
       timer.pause();
       setIsPaused(true);
-      setStatus(timer.getStatus());
+      updateStatus();
     }
   };
 
@@ -95,14 +222,20 @@ export const PomodoroTimerComponent: React.FC = () => {
     const timer = await getPomodoroTimer();
     timer.stop();
     setIsPaused(false);
-    setStatus(timer.getStatus());
+    updateStatus();
   };
 
-  const handleReset = async () => {
+  const handleSkip = async () => {
     const timer = await getPomodoroTimer();
-    timer.reset();
-    setIsPaused(false);
-    setStatus(timer.getStatus());
+    if (status.state !== 'idle') {
+      timer.stop();
+      timer.start();
+      updateStatus();
+    }
+  };
+
+  const closeAlert = () => {
+    setAlert(prev => ({ ...prev, show: false }));
   };
 
   const formatTime = (seconds: number): string => {
@@ -110,7 +243,6 @@ export const PomodoroTimerComponent: React.FC = () => {
   };
 
   const getProgress = (): number => {
-    const timer = getPomodoroTimer();
     const config = {
       workDuration: 25 * 60,
       shortBreakDuration: 5 * 60,
@@ -120,96 +252,96 @@ export const PomodoroTimerComponent: React.FC = () => {
     return PomodoroTimer.getProgress(status, config);
   };
 
-  const getStateLabel = (): string => {
+  const getStateIcon = (): string => {
     switch (status.state) {
-      case 'working':
-        return 'Trabajando';
-      case 'shortBreak':
-        return 'Descanso Corto';
-      case 'longBreak':
-        return 'Descanso Largo';
-      default:
-        return 'Inactivo';
+      case 'working': return '🍅';
+      case 'shortBreak': return '☕';
+      case 'longBreak': return '🌴';
+      default: return '🍅';
     }
   };
 
-  const getStateEmoji = (): string => {
+  const getStateText = (): string => {
     switch (status.state) {
-      case 'working':
-        return '🍅';
-      case 'shortBreak':
-        return '☕';
-      case 'longBreak':
-        return '🌴';
-      default:
-        return '⏸️';
+      case 'working': return 'Trabajando';
+      case 'shortBreak': return 'Descanso';
+      case 'longBreak': return 'Descanso largo';
+      default: return 'Pomodoro';
     }
   };
 
-  if (status.state === 'idle') {
-    return (
-      <div className="pomodoro-timer idle">
-        <div className="pomodoro-header">
-          <span className="pomodoro-icon">🍅</span>
-          <span className="pomodoro-label">Pomodoro</span>
+  return (
+    <div className="pomodoro-launcher">
+      {/* Estado principal */}
+      <div className="pomodoro-main">
+        <div className="pomodoro-status-line">
+          <span className="status-icon">{getStateIcon()}</span>
+          <span className="status-text">{getStateText()}</span>
+          {status.totalPomodoros > 0 && (
+            <span className="total-badge">{status.totalPomodoros}</span>
+          )}
         </div>
-        <div className="pomodoro-controls">
-          <button className="pomodoro-btn start" onClick={handleStart}>
-            Iniciar Pomodoro
-          </button>
+
+        <div className="pomodoro-time-large">
+          {formatTime(status.timeRemaining)}
         </div>
-        {status.totalPomodoros > 0 && (
-          <div className="pomodoro-stats">
-            <span>Pomodoros completados: {status.totalPomodoros}</span>
+
+        {status.state !== 'idle' && (
+          <>
+            <div className="pomodoro-progress-mini">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${getProgress()}%` }}
+              />
+            </div>
+            <div className="pomodoro-session-info">
+              <span>Sesión #{status.currentPomodoro}</span>
+              {isPaused && <span className="pause-dot">⏸</span>}
+            </div>
+          </>
+        )}
+
+        {status.state === 'idle' && (
+          <div className="pomodoro-hint">
+            Presiona Enter para comenzar
           </div>
         )}
       </div>
-    );
-  }
 
-  return (
-    <div className={`pomodoro-timer ${status.state}`}>
-      <div className="pomodoro-header">
-        <span className="pomodoro-icon">{getStateEmoji()}</span>
-        <span className="pomodoro-label">{getStateLabel()}</span>
-      </div>
-      
-      <div className="pomodoro-time">
-        {formatTime(status.timeRemaining)}
-      </div>
-      
-      <div className="pomodoro-progress">
-        <div 
-          className="pomodoro-progress-bar" 
-          style={{ width: `${getProgress()}%` }}
-        />
-      </div>
-      
-      <div className="pomodoro-stats">
-        <span>Pomodoro #{status.currentPomodoro}</span>
-        {status.totalPomodoros > 0 && (
-          <span className="pomodoro-total">Total: {status.totalPomodoros}</span>
-        )}
-      </div>
-      
-      <div className="pomodoro-controls">
-        {isPaused ? (
-          <button className="pomodoro-btn resume" onClick={handleStart}>
-            Reanudar
+      {/* Controles compactos */}
+      <div className="pomodoro-controls-mini">
+        {status.state === 'idle' ? (
+          <button className="control-btn start-btn" onClick={handleStart}>
+            ▶ Iniciar
           </button>
         ) : (
-          <button className="pomodoro-btn pause" onClick={handlePause}>
-            Pausar
-          </button>
+          <>
+            {isPaused ? (
+              <button className="control-btn" onClick={handleStart}>▶</button>
+            ) : (
+              <button className="control-btn" onClick={handlePause}>⏸</button>
+            )}
+            <button className="control-btn" onClick={handleSkip}>⏭</button>
+            <button className="control-btn stop" onClick={handleStop}>⏹</button>
+          </>
         )}
-        <button className="pomodoro-btn stop" onClick={handleStop}>
-          Detener
-        </button>
-        <button className="pomodoro-btn reset" onClick={handleReset}>
-          Resetear
-        </button>
       </div>
+
+      {/* Alerta minimalista */}
+      {alert.show && (
+        <div className="alert-mini" onClick={closeAlert}>
+          <div className="alert-mini-content">
+            <span className="alert-mini-icon">
+              {alert.type === 'work' ? '✓' : '→'}
+            </span>
+            <div className="alert-mini-text">
+              {alert.message.split('\n').map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

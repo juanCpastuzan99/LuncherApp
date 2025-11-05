@@ -1,33 +1,24 @@
-/**
- * Componente para mostrar resultados de cálculo
- */
-
 import React from 'react';
 import './CalcResult.css';
 
 interface CalcResultProps {
-  query: string;
-  result: string;
+  result: number | string;
+  expression: string;
+  copied?: boolean;
 }
 
-export const CalcResult: React.FC<CalcResultProps> = ({ query, result }) => {
+const CalcResult: React.FC<CalcResultProps> = ({ result, expression, copied = false }) => {
   return (
-    <div className="calc-result calculator-mode">
-      <div className="calc-header">
-        <span className="calc-icon">🧮</span>
-        <span className="calc-label">Calculadora</span>
-      </div>
-      <div className="calc-expression">
-        {query}
-      </div>
-      <div className="calc-equals">=</div>
-      <div className="calc-value">
-        {result}
-      </div>
-      <div className="calc-hint">
-        Presiona Enter para copiar el resultado
-      </div>
+    <div className="calc-result">
+      <div className="calc-expression">{expression}</div>
+      <div className="calc-value">{result}</div>
+      {copied && (
+        <div className="calc-copied">✓ Copiado al portapapeles</div>
+      )}
+      <div className="calc-hint">Presiona Enter para copiar</div>
     </div>
   );
 };
+
+export default CalcResult;
 
