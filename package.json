@@ -40,8 +40,9 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "app-icon": "^0.13.2",
     "electron-store": "^8.2.0",
-    "app-icon": "^0.13.2"
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "electron": "^39.0.0",
