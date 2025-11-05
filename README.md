@@ -1,11 +1,14 @@
 # Win11 Dev Launcher
 
-Un launcher de aplicaciones para Windows 11 con funciones avanzadas de gestión de ventanas inspiradas en Hyprland. Perfecto para desarrolladores que quieren mejorar su productividad.
+Un launcher de aplicaciones para Windows 11 con funciones avanzadas de gestión de ventanas inspiradas en Hyprland y **inteligencia artificial integrada**. Perfecto para desarrolladores que quieren mejorar su productividad.
 
 ## ✨ Características
 
 - 🚀 **Launcher rápido**: Busca y abre aplicaciones instaladas instantáneamente
 - 📱 **Detección completa**: Encuentra aplicaciones desde Menú de Inicio, Microsoft Store, y registro de Windows
+- 🤖 **Búsqueda Inteligente con IA**: Corrección automática de errores tipográficos y búsqueda por sinónimos
+- 💡 **Sugerencias Inteligentes**: Predice aplicaciones basándose en tu historial y patrones de uso
+- 🗣️ **Comandos de Lenguaje Natural**: Ejecuta acciones hablando en español ("calcula 2+2", "organiza ventanas")
 - 🪟 **Window Management estilo Hyprland**: Organiza ventanas automáticamente
 - ⌨️ **Hotkeys personalizables**: Atajos de teclado para todas las funciones
 - 🎨 **Interfaz moderna**: Diseño oscuro con efecto acrílico tipo Windows 11
@@ -13,53 +16,22 @@ Un launcher de aplicaciones para Windows 11 con funciones avanzadas de gestión 
 
 ## 📦 Instalación
 
-### 🚀 Instalación Rápida desde GitHub (Un Solo Comando)
-
-**Opción 1: Con winget (Recomendado para Windows 11/10)**
-
-Instala automáticamente Node.js con winget y luego la aplicación:
-
-```powershell
-# PowerShell (Windows) - Un solo comando con winget
-irm https://raw.githubusercontent.com/juanCpastuzan99/easyappWin11/main/install-with-winget.ps1 | iex
-```
-
-**Opción 2: Instalación directa desde GitHub**
-
-Si ya tienes Node.js instalado:
-
-```powershell
-# PowerShell (Windows) - Un solo comando
-irm https://raw.githubusercontent.com/juanCpastuzan99/easyappWin11/main/install-from-github.ps1 | iex
-```
-
-O si prefieres descargar el script primero:
-
-```powershell
-# Descargar y ejecutar
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/juanCpastuzan99/easyappWin11/main/install-with-winget.ps1" -OutFile install.ps1
-.\install.ps1
-```
-
-Estos scripts:
-- ✅ Instalan Node.js automáticamente (con winget) si no está instalado
-- ✅ Descargar automáticamente el código desde GitHub
-- ✅ Instalan todas las dependencias
-- ✅ Instalan la aplicación globalmente
-- ✅ Todo en un solo comando
-
-### Opción 1: Instalación Global (Recomendado)
-
-Si ya tienes el código localmente:
+### Opción 1: Instalación desde Git (Recomendado)
 
 ```bash
+git clone https://github.com/juanCpastuzan99/LuncherApp.git
+cd LuncherApp/parcial
+npm install
+npm start
+```
+
+### Opción 2: Instalación Global
+
+Si ya tienes el código clonado:
+
+```bash
+cd LuncherApp/parcial
 npm install -g .
-```
-
-O desde npm (si está publicado):
-
-```bash
-npm install -g win11-dev-launcher
 ```
 
 Después de la instalación, puedes ejecutar la aplicación desde cualquier lugar con:
@@ -74,20 +46,13 @@ o
 win-launcher
 ```
 
-### Opción 2: Instalación Local
+### Opción 3: Instalación Local (Desarrollo)
 
 ```bash
+git clone https://github.com/juanCpastuzan99/LuncherApp.git
+cd LuncherApp/parcial
 npm install
-npm start
-```
-
-### Opción 3: Instalación desde Git
-
-```bash
-git clone <tu-repo>
-cd win11-dev-launcher
-npm install
-npm start
+npm run dev
 ```
 
 ## 🚀 Uso
@@ -95,9 +60,53 @@ npm start
 ### Launcher de Aplicaciones
 
 1. Presiona `Alt + Space` para abrir el launcher
-2. Escribe el nombre de la aplicación que buscas
+2. Escribe el nombre de la aplicación que buscas (o usa comandos de lenguaje natural)
 3. Usa las flechas ↑↓ para navegar
-4. Presiona `Enter` para abrir o `Esc` para cerrar
+4. Presiona `Enter` para abrir o ejecutar, `Esc` para cerrar
+
+### 🧠 Funciones de IA
+
+#### Búsqueda Inteligente
+- **Corrección de errores**: Escribe "visul studio" → encuentra "Visual Studio Code"
+- **Búsqueda por sinónimos**: Escribe "editor" → encuentra todos los editores de código
+- **Fuzzy matching**: Encuentra aplicaciones aunque no recuerdes el nombre exacto
+
+#### Sugerencias Inteligentes
+- Abre el launcher sin escribir nada → Ve sugerencias basadas en:
+  - Tu historial de uso
+  - Hora del día
+  - Aplicaciones frecuentemente usadas juntas
+  - Patrones de uso
+
+#### Comandos de Lenguaje Natural
+
+**Calculadora:**
+```
+calcula 25 * 4
+2 + 2
+10% de 200
+```
+
+**Gestión de Ventanas:**
+```
+organiza ventanas
+maximiza ventana
+centra ventana
+mueve ventana izquierda
+workspace siguiente
+```
+
+**Búsqueda Web:**
+```
+buscar en google: electron tutorial
+search: react hooks
+```
+
+**Lanzamiento:**
+```
+abre chrome
+open visual studio code
+```
 
 ### Window Management
 
@@ -160,17 +169,37 @@ Puedes editar este archivo para personalizar:
 
 ```bash
 # Clonar el repositorio
-git clone <repo-url>
-cd win11-dev-launcher
+git clone https://github.com/juanCpastuzan99/LuncherApp.git
+cd LuncherApp/parcial
 
 # Instalar dependencias
 npm install
 
 # Ejecutar en modo desarrollo
 npm start
+# o
+npm run dev
 
 # Crear instalador
 npm run build-installer
+```
+
+### Estructura del Proyecto
+
+```
+parcial/
+├── src/
+│   ├── ai/                    # Funciones de IA
+│   │   ├── fuzzySearch.ts     # Búsqueda inteligente
+│   │   ├── smartSuggestions.ts # Sugerencias inteligentes
+│   │   └── commandParser.ts   # Parser de comandos
+│   ├── main/                  # Proceso principal (Electron)
+│   ├── preload/               # Preload scripts
+│   ├── renderer/               # Interfaz React
+│   │   ├── components/        # Componentes React
+│   │   └── store/             # Estado global (Zustand)
+│   └── shared/                # Tipos compartidos
+└── package.json
 ```
 
 ## 📦 Crear Instalador Windows
@@ -195,6 +224,17 @@ El sistema incluye funciones avanzadas de gestión de ventanas:
 - **Centrado Inteligente**: Centra ventanas automáticamente
 
 Ver [WINDOW_MANAGEMENT.md](WINDOW_MANAGEMENT.md) para más detalles.
+
+### Inteligencia Artificial
+
+El launcher incluye funciones de IA implementadas localmente (sin necesidad de API externa):
+
+- **Búsqueda Semántica**: Entiende sinónimos y contexto
+- **Corrección de Errores**: Algoritmo de Levenshtein para typos
+- **Análisis de Patrones**: Aprende de tus hábitos de uso
+- **Comandos Naturales**: Procesamiento de lenguaje natural básico
+
+Ver [IMPLEMENTACION_IA_COMPLETADA.md](IMPLEMENTACION_IA_COMPLETADA.md) para más detalles sobre las funciones de IA.
 
 ## 🐛 Solución de Problemas
 
@@ -228,21 +268,56 @@ MIT
 
 ## 🤝 Contribuciones
 
-Las contribuciones son bienvenidas. Por favor:
+Las contribuciones son bienvenidas. Este proyecto usa Git Flow:
 
 1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+2. Crea una feature branch desde `develop`:
+   ```bash
+   git flow feature start nombre-feature
+   ```
+3. Realiza tus cambios y haz commit
+4. Finaliza la feature:
+   ```bash
+   git flow feature finish nombre-feature
+   ```
+5. Push a `develop` y abre un Pull Request
+
+**Ramas:**
+- `main`: Producción (solo releases)
+- `develop`: Desarrollo (integración continua)
+- `feature/*`: Nuevas características
+- `bugfix/*`: Correcciones de bugs
+- `release/*`: Preparación de releases
 
 ## 🙏 Agradecimientos
 
 - Inspirado en [Hyprland](https://hyprland.org/) - Compositor de ventanas para Linux
 - Construido con [Electron](https://www.electronjs.org/)
 
+## 📚 Documentación Adicional
+
+- [IMPLEMENTACION_IA_COMPLETADA.md](IMPLEMENTACION_IA_COMPLETADA.md) - Documentación de funciones de IA
+- [WINDOW_MANAGEMENT.md](WINDOW_MANAGEMENT.md) - Guía de gestión de ventanas
+- [DIAGRAMA_UML.md](DIAGRAMA_UML.md) - Diagrama de arquitectura
+
+## 📝 Changelog
+
+### Versión Actual (Develop)
+
+**Nuevas Funciones:**
+- ✅ Búsqueda inteligente con corrección de errores
+- ✅ Sugerencias basadas en patrones de uso
+- ✅ Comandos de lenguaje natural
+- ✅ Calculadora integrada
+- ✅ Optimizaciones de rendimiento (debouncing, reducción de re-renders)
+
+**Mejoras:**
+- 🚀 Búsqueda más rápida con debouncing
+- 🎨 UI mejorada con transiciones suaves
+- 🔧 Mejor manejo de estados durante escaneo
+
 ---
 
 **Hecho con ❤️ para desarrolladores de Windows**
 
-# LuncherApp
+**Repositorio:** https://github.com/juanCpastuzan99/LuncherApp
