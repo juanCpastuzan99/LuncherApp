@@ -3,22 +3,24 @@
   "version": "0.1.0",
   "description": "Windows 11 developer-focused app launcher (Electron) inspired by Hyprland with window management features",
   "main": "src/main.js",
-  "bin": {
-    "win11-launcher": "./bin/win11-launcher.js",
-    "win-launcher": "./bin/win11-launcher.js"
-  },
+  "bin": {},
   "preferGlobal": true,
   "scripts": {
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "set NODE_ENV=development&& concurrently -k -s first \"vite --port 5174\" \"wait-on http://localhost:5174 && electron .\"",
+    "dev:start": "electron .",
+    "dev:file": "set ELECTRON_SIMPLE=1&& electron src/main.js",
+    "dev:debug": "set ELECTRON_DEBUG=1&& npm run dev",
     "dev:simple": "electron .",
     "dev:vite": "electron-vite dev",
     "build": "vite build && electron-vite build",
-    "preview": "electron-vite preview",
+    "preview": "set ELECTRON_PREVIEW=1&& electron .",
     "start": "npm run dev",
-    "dist": "npm run build && electron-builder --win",
+    "clean": "if (Test-Path dist) { Remove-Item -Recurse -Force dist }; if (Test-Path out) { Remove-Item -Recurse -Force out }; if (Test-Path dist-electron) { Remove-Item -Recurse -Force dist-electron }; if (Test-Path .vite) { Remove-Item -Recurse -Force .vite }; if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }; Write-Host Cache limpiado",
+    "clean:cache": "npm run clean",
+    "dist": "npm run build && electron-builder --win --config electron-builder.yml",
     "postinstall": "electron-builder install-app-deps",
     "install-global": "npm install -g .",
-    "build-installer": "npm run build && electron-builder --win --publish never"
+    "build-win": "npm run build && electron-builder --win --config"
   },
   "keywords": [
     "electron",
@@ -34,30 +36,54 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/juanCpastuzan99/easyappWin11.git"
+    "url": "https://github.com/juanCpastuzan99/LuncherApp.git"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "^5.1.0",
     "app-icon": "^0.13.2",
     "electron-store": "^8.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "concurrently": "^9.2.1",
     "electron": "^39.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.9.3",
+    "wait-on": "^9.0.1",
+    "web-vitals": "^5.1.0"
   },
   "build": {
     "appId": "com.yourdomain.win11devlauncher",
-    "productName": "Win11 Dev Launcher",
+    "productName": "Dev Launcher",
     "files": [
+      "dist-electron/**/*",
+      "out/**/*",
       "src/**/*",
-      "bin/**/*",
       "package.json",
+      "node_modules/**/*",
       "README.md",
       "WINDOW_MANAGEMENT.md"
     ],
+    "extraResources": [
+      {
+        "from": "src/windowManager.js",
+        "to": "windowManager.js"
+      },
+      {
+        "from": "src/config.js",
+        "to": "config.js"
+      }
+    ],
+    "extraMetadata": {
+      "main": "out/main/index.js"
+    },
     "win": {
       "target": [
         {

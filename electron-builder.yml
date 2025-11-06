@@ -1,0 +1,34 @@
+appId: com.yourdomain.win11devlauncher
+productName: Dev Launcher
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+  - node_modules/**
+  - README.md
+  - WINDOW_MANAGEMENT.md
+
+extraResources: []
+
+extraMetadata:
+  main: out/main/index.js
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+

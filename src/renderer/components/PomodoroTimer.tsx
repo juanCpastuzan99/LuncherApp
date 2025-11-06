@@ -110,7 +110,6 @@ export const PomodoroTimerComponent: React.FC = () => {
   };
 
   const getProgress = (): number => {
-    const timer = getPomodoroTimer();
     const config = {
       workDuration: 25 * 60,
       shortBreakDuration: 5 * 60,
