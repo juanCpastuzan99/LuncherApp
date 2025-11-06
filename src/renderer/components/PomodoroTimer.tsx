@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { PomodoroTimer, getPomodoroTimer, type PomodoroStatus } from '../../ai/pomodoro';
+import { PomodoroTimer, getPomodoroTimer, getPomodoroConfig, savePomodoroConfig, type PomodoroStatus } from '../../ai/pomodoro';
 import './PomodoroTimer.css';
 
 interface AlertState {
@@ -22,6 +22,9 @@ export const PomodoroTimerComponent: React.FC = () => {
     phase: 'work'
   });
   const [isPaused, setIsPaused] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [workMinutes, setWorkMinutes] = useState(25);
+  const [breakMinutes, setBreakMinutes] = useState(5);
   const [alert, setAlert] = useState<AlertState>({
     show: false,
     message: '',
@@ -87,6 +90,20 @@ export const PomodoroTimerComponent: React.FC = () => {
       window.removeEventListener('blur', handleBlur);
     };
   }, [syncAfterBackground]);
+
+  // Cargar configuración guardada al iniciar
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await getPomodoroConfig();
+        setWorkMinutes(Math.floor(config.workDuration / 60));
+        setBreakMinutes(Math.floor(config.shortBreakDuration / 60));
+      } catch (error) {
+        console.error('Error cargando configuración:', error);
+      }
+    };
+    loadConfig();
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -200,12 +217,40 @@ export const PomodoroTimerComponent: React.FC = () => {
     const timer = await getPomodoroTimer();
     if (status.state === 'idle') {
       timer.start();
+      setShowConfig(false);
       updateStatus();
     } else if (isPaused) {
       timer.resume();
       setIsPaused(false);
       updateStatus();
     }
+  };
+
+  const handleSaveConfig = async () => {
+    if (workMinutes < 1 || workMinutes > 60) {
+      window.alert('El tiempo de trabajo debe estar entre 1 y 60 minutos');
+      return;
+    }
+    if (breakMinutes < 1 || breakMinutes > 30) {
+      window.alert('El tiempo de descanso debe estar entre 1 y 30 minutos');
+      return;
+    }
+
+    await savePomodoroConfig({
+      workDuration: workMinutes,
+      shortBreakDuration: breakMinutes,
+      longBreakDuration: breakMinutes * 3, // Descanso largo = 3x descanso corto
+      pomodorosUntilLongBreak: 4
+    });
+
+    // Recargar la instancia del timer para aplicar la nueva configuración
+    // Necesitamos resetear la instancia global para que use la nueva configuración
+    if (status.state === 'idle') {
+      // La configuración se aplicará automáticamente en la próxima llamada a getPomodoroTimer()
+      // porque savePomodoroConfig ya actualiza la instancia existente
+    }
+
+    setShowConfig(false);
   };
 
   const handlePause = async () => {
@@ -301,9 +346,45 @@ export const PomodoroTimerComponent: React.FC = () => {
           </>
         )}
 
-        {status.state === 'idle' && (
+        {status.state === 'idle' && !showConfig && (
           <div className="pomodoro-hint">
             Presiona Enter para comenzar
+          </div>
+        )}
+
+        {/* Configuración de tiempos */}
+        {status.state === 'idle' && showConfig && (
+          <div className="pomodoro-config">
+            <div className="config-row">
+              <label>Tiempo de trabajo (minutos):</label>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={workMinutes}
+                onChange={(e) => setWorkMinutes(parseInt(e.target.value) || 25)}
+                className="config-input"
+              />
+            </div>
+            <div className="config-row">
+              <label>Tiempo de descanso (minutos):</label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value={breakMinutes}
+                onChange={(e) => setBreakMinutes(parseInt(e.target.value) || 5)}
+                className="config-input"
+              />
+            </div>
+            <div className="config-actions">
+              <button className="config-btn save" onClick={handleSaveConfig}>
+                ✓ Guardar
+              </button>
+              <button className="config-btn cancel" onClick={() => setShowConfig(false)}>
+                ✕ Cancelar
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -311,9 +392,20 @@ export const PomodoroTimerComponent: React.FC = () => {
       {/* Controles compactos */}
       <div className="pomodoro-controls-mini">
         {status.state === 'idle' ? (
-          <button className="control-btn start-btn" onClick={handleStart}>
-            ▶ Iniciar
-          </button>
+          <>
+            {!showConfig && (
+              <button className="control-btn start-btn" onClick={handleStart}>
+                ▶ Iniciar
+              </button>
+            )}
+            <button 
+              className="control-btn config-btn" 
+              onClick={() => setShowConfig(!showConfig)}
+              title="Configurar tiempos"
+            >
+              ⚙️
+            </button>
+          </>
         ) : (
           <>
             {isPaused ? (
