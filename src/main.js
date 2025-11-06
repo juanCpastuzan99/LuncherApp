@@ -4,6 +4,29 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const Store = require('electron-store');
 
+// Configurar flags de Chromium para manejar caché mejor (ANTES de app.whenReady)
+// Estos flags ayudan a evitar errores de permisos de caché
+app.commandLine.appendSwitch('--disable-gpu-sandbox');
+app.commandLine.appendSwitch('--disable-software-rasterizer');
+app.commandLine.appendSwitch('--disable-dev-shm-usage');
+app.commandLine.appendSwitch('--disable-setuid-sandbox');
+app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor'); // Evita algunos errores de GPU
+
+// Configurar caché de disco con límite y permisos
+app.commandLine.appendSwitch('--disk-cache-size', '52428800'); // 50MB
+app.commandLine.appendSwitch('--enable-features', 'NetworkService,NetworkServiceInProcess');
+
+// Configurar permisos de almacenamiento
+app.commandLine.appendSwitch('--disable-ipc-flooding-protection');
+
+// Firebase Admin SDK (opcional - solo si existe serviceAccountKey.json)
+let firebaseAdmin = null;
+try {
+  firebaseAdmin = require('./main/firebaseAdmin');
+} catch (error) {
+  console.log('⚠️ Firebase Admin no disponible (esto es normal si no lo necesitas)');
+}
+
 // Configuración de caché (se inicializa cuando app está lista)
 let CACHE_FILE;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
@@ -32,6 +55,7 @@ const store = new Store({
 });
 
 let mainWindow;
+let settingsWindow = null;
 
 function getBaseDir() {
   if (app.isPackaged) {
@@ -121,7 +145,7 @@ function createWindow() {
   // Cargar contenido según el entorno
   if (!isPackaged) {
     // DESARROLLO: Intentar Vite primero, luego archivo local
-    const devPort = process.env.VITE_DEV_SERVER_PORT || process.env.PORT || '5174';
+    const devPort = process.env.VITE_DEV_SERVER_PORT || process.env.PORT || '3000';
     const devUrl = `http://localhost:${devPort}`;
     
     console.log('🔍 [DEV] Intentando cargar desde Vite:', devUrl);
@@ -395,17 +419,53 @@ ipcMain.on('hide-window', () => {
       }
 });
 
+ipcMain.on('show-window', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isVisible()) {
+      mainWindow.focus();
+    } else {
+      mainWindow.center();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    // Enfocar el input de búsqueda o mostrar el pomodoro
+    if (mainWindow.webContents) {
+      mainWindow.webContents.send('focus-pomodoro');
+    }
+  }
+});
+
 // IPC Handlers para configuración
 ipcMain.handle('config-set', (event, { section, key, value }) => {
   try {
-    const current = store.get(section, {});
-    current[key] = value;
-    store.set(section, current);
+    if (key === 'value') {
+      // Si key es 'value', establecer directamente la sección
+      store.set(section, value);
+    } else {
+      // Manejar claves anidadas (ej: 'config', 'list')
+      const current = store.get(section, {});
+      if (key.includes('.')) {
+        // Clave anidada (ej: 'pomodoro.config')
+        const keys = key.split('.');
+        let target = current;
+        for (let i = 0; i < keys.length - 1; i++) {
+          if (!target[keys[i]]) {
+            target[keys[i]] = {};
+          }
+          target = target[keys[i]];
+        }
+        target[keys[keys.length - 1]] = value;
+      } else {
+        // Clave simple
+        current[key] = value;
+      }
+      store.set(section, current);
+    }
     return { success: true };
   } catch (error) {
     console.error('Error guardando config:', error);
     return { success: false, error: error.message };
-        }
+  }
 });
 
 ipcMain.handle('config-get', () => {
@@ -417,13 +477,217 @@ ipcMain.handle('config-get', () => {
     }
   });
 
+// IPC Handlers para Firebase Admin (solo si está disponible)
+if (firebaseAdmin) {
+  // Obtener todos los usuarios (solo admin)
+  ipcMain.handle('admin-get-users', async () => {
+    try {
+      if (!firebaseAdmin.getAllUsers) {
+        return { success: false, error: 'Firebase Admin no está inicializado' };
+      }
+      const users = await firebaseAdmin.getAllUsers();
+      return { success: true, users: users.map(u => ({
+        uid: u.uid,
+        email: u.email,
+        displayName: u.displayName,
+        creationTime: u.metadata.creationTime
+      })) };
+    } catch (error) {
+      console.error('Error obteniendo usuarios:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Eliminar datos de un usuario (solo admin)
+  ipcMain.handle('admin-delete-user-data', async (event, userId) => {
+    try {
+      if (!firebaseAdmin.deleteUserData) {
+        return { success: false, error: 'Firebase Admin no está inicializado' };
+      }
+      await firebaseAdmin.deleteUserData(userId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error eliminando datos de usuario:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Verificar si Firebase Admin está disponible
+  ipcMain.handle('admin-is-available', () => {
+    try {
+      const db = firebaseAdmin.getAdminFirestore();
+      return { available: db !== null };
+    } catch (error) {
+      return { available: false, error: error.message };
+    }
+  });
+}
+
+// IPC Handlers para ventana de configuración (siempre disponibles)
+// IPC Handler para abrir ventana de configuración
+ipcMain.handle('open-settings-window', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      // Si ya existe, traerla al frente
+      settingsWindow.show();
+      settingsWindow.focus();
+      return { success: true, message: 'Ventana ya abierta' };
+    }
+
+    try {
+      const isPackaged = app.isPackaged;
+      const baseDir = getBaseDir();
+      
+      // Determinar ruta del preload
+      let preloadPath;
+      if (isPackaged) {
+        const possiblePaths = [
+          path.join(process.resourcesPath, 'preload.js'),
+          path.join(process.resourcesPath, 'out', 'preload', 'index.js'),
+          path.join(__dirname, 'preload.js'),
+          path.join(__dirname, '..', 'preload.js')
+        ];
+        
+        for (const possiblePath of possiblePaths) {
+          if (fs.existsSync(possiblePath)) {
+            preloadPath = possiblePath;
+            break;
+          }
+        }
+      } else {
+        preloadPath = path.join(__dirname, 'preload.js');
+      }
+
+      settingsWindow = new BrowserWindow({
+        width: 900,
+        height: 700,
+        minWidth: 600,
+        minHeight: 500,
+        show: false,
+        frame: true, // Mostrar barra de título con controles
+        titleBarStyle: 'default',
+        resizable: true,
+        maximizable: true,
+        minimizable: true,
+        closable: true,
+        backgroundColor: '#1a1a2e',
+        webPreferences: {
+          preload: preloadPath,
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: false
+        },
+        icon: isPackaged ? path.join(process.resourcesPath, 'icon.png') : undefined
+      });
+
+      settingsWindow.setMenuBarVisibility(false);
+      settingsWindow.setTitle('Configuración - Launcher');
+
+      // Eventos de la ventana
+      settingsWindow.on('closed', () => {
+        settingsWindow = null;
+      });
+
+      settingsWindow.webContents.on('did-finish-load', () => {
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+          settingsWindow.center();
+          settingsWindow.show();
+          settingsWindow.focus();
+        }
+      });
+
+      // Cargar contenido
+      if (!isPackaged) {
+        const devPort = process.env.VITE_DEV_SERVER_PORT || process.env.PORT || '3000';
+        const devUrl = `http://localhost:${devPort}/#settings`;
+        settingsWindow.loadURL(devUrl).catch((err) => {
+          console.error('Error cargando configuración:', err);
+        });
+      } else {
+        const rendererPath = path.join(baseDir, 'dist-electron', 'renderer', 'index.html');
+        if (fs.existsSync(rendererPath)) {
+          settingsWindow.loadFile(rendererPath, { hash: 'settings' });
+        } else {
+          const fallbackHtml = `
+            <html>
+              <head><title>Configuración</title></head>
+              <body style="background:#1a1a2e;color:white;padding:20px;font-family:sans-serif">
+                <h1>Configuración</h1>
+                <p>La ventana de configuración se cargará aquí.</p>
+              </body>
+            </html>
+          `;
+          settingsWindow.loadURL(`data:text/html,${encodeURIComponent(fallbackHtml)}`);
+        }
+      }
+
+      return { success: true, message: 'Ventana de configuración abierta' };
+    } catch (error) {
+      console.error('Error abriendo ventana de configuración:', error);
+      return { success: false, error: error.message };
+    }
+});
+
+// IPC Handler para cerrar ventana de configuración
+ipcMain.handle('close-settings-window', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close();
+    return { success: true };
+  }
+  return { success: false, message: 'Ventana no está abierta' };
+});
+
 app.whenReady().then(() => {
-      // Limpiar cache al iniciar (opcional, descomentar si es necesario)
+      // Configurar directorios de caché con permisos adecuados
+      try {
+        const userDataPath = app.getPath('userData');
+        
+        // Asegurar que el directorio principal existe
+        if (!fs.existsSync(userDataPath)) {
+          fs.mkdirSync(userDataPath, { recursive: true });
+        }
+        
+        // Crear directorios de caché si no existen
+        const cacheDir = path.join(userDataPath, 'Cache');
+        if (!fs.existsSync(cacheDir)) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        
+        const gpucacheDir = path.join(userDataPath, 'GPUCache');
+        if (!fs.existsSync(gpucacheDir)) {
+          fs.mkdirSync(gpucacheDir, { recursive: true });
+        }
+        
+        // Configurar permisos de almacenamiento en la sesión
+        session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+          // Permitir permisos necesarios para almacenamiento
+          if (permission === 'persistent-storage') {
+            callback(true);
+          } else {
+            callback(false);
+          }
+        });
+        
+        console.log('✅ Directorios de caché configurados correctamente');
+      } catch (error) {
+        console.warn('⚠️ Error configurando directorios de caché (no crítico):', error.message);
+      }
+      
+      // Limpiar cache al iniciar solo si hay problemas (opcional)
       // if (!app.isPackaged) {
-      //   const { session } = require('electron');
       //   session.defaultSession.clearCache();
       //   session.defaultSession.clearStorageData();
       // }
+
+      // Inicializar Firebase Admin SDK si está disponible
+      if (firebaseAdmin && firebaseAdmin.initializeFirebaseAdmin) {
+        try {
+          firebaseAdmin.initializeFirebaseAdmin();
+          console.log('✅ Firebase Admin SDK configurado');
+        } catch (error) {
+          console.log('⚠️ Firebase Admin no se pudo inicializar:', error.message);
+          console.log('⚠️ Esto es normal si no tienes serviceAccountKey.json');
+        }
+      }
 
       createWindow();
 

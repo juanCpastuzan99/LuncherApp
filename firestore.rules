@@ -1,0 +1,219 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // FUNCIONES AUXILIARES
+    // ============================================
+    
+    // Verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Verificar si el usuario es el propietario del documento
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Verificar que los campos requeridos estén presentes
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    // Verificar que los campos no excedan tamaños máximos
+    function isValidString(field, maxLength) {
+      return request.resource.data[field] is string &&
+             request.resource.data[field].size() <= maxLength;
+    }
+    
+    // ============================================
+    // USUARIOS Y SUS DATOS PRIVADOS
+    // ============================================
+    
+    // Estructura: users/{userId}/...
+    match /users/{userId} {
+      
+      // Permitir lectura/escritura solo al propietario
+      allow read, write: if isOwner(userId);
+      
+      // ============================================
+      // FLASHCARDS
+      // ============================================
+      match /flashcards/{flashcardId} {
+        // Solo el propietario puede leer/escribir sus flashcards
+        allow read, write: if isOwner(userId);
+        
+        // Validaciones al crear/actualizar
+        allow create: if isOwner(userId) &&
+          hasRequiredFields(['id', 'question', 'answer']) &&
+          isValidString('question', 500) &&
+          isValidString('answer', 2000) &&
+          isValidString('category', 50);
+        
+        allow update: if isOwner(userId) &&
+          isValidString('question', 500) &&
+          isValidString('answer', 2000) &&
+          isValidString('category', 50);
+      }
+      
+      // ============================================
+      // NOTES (NOTAS)
+      // ============================================
+      match /notes/{noteId} {
+        // Solo el propietario puede leer/escribir sus notas
+        allow read, write: if isOwner(userId);
+        
+        // Validaciones al crear/actualizar
+        allow create: if isOwner(userId) &&
+          hasRequiredFields(['id', 'title', 'content']) &&
+          isValidString('title', 200) &&
+          isValidString('content', 50000) &&
+          isValidString('category', 50);
+        
+        allow update: if isOwner(userId) &&
+          isValidString('title', 200) &&
+          isValidString('content', 50000) &&
+          isValidString('category', 50);
+      }
+      
+      // ============================================
+      // TODOS (TAREAS)
+      // ============================================
+      match /todos/{todoId} {
+        // Solo el propietario puede leer/escribir sus tareas
+        allow read, write: if isOwner(userId);
+        
+        // Validaciones al crear/actualizar
+        allow create: if isOwner(userId) &&
+          hasRequiredFields(['id', 'title', 'completed']) &&
+          isValidString('title', 200) &&
+          request.resource.data.completed is bool;
+        
+        allow update: if isOwner(userId) &&
+          isValidString('title', 200) &&
+          request.resource.data.completed is bool;
+      }
+      
+      // ============================================
+      // SNIPPETS (FRAGMENTOS DE CÓDIGO)
+      // ============================================
+      match /snippets/{snippetId} {
+        // El propietario puede leer/escribir siempre
+        allow read, write: if isOwner(userId);
+        
+        // Si es público, cualquier usuario autenticado puede leerlo
+        allow read: if isAuthenticated() && 
+                     resource.data.isPublic == true;
+        
+        // Validaciones al crear/actualizar
+        allow create: if isOwner(userId) &&
+          hasRequiredFields(['id', 'title', 'code', 'language']) &&
+          isValidString('title', 200) &&
+          isValidString('code', 100000) &&
+          isValidString('language', 50);
+        
+        allow update: if isOwner(userId) &&
+          isValidString('title', 200) &&
+          isValidString('code', 100000) &&
+          isValidString('language', 50);
+      }
+      
+      // ============================================
+      // QUIZZES (CUESTIONARIOS)
+      // ============================================
+      match /quizzes/{quizId} {
+        // El propietario puede leer/escribir siempre
+        allow read, write: if isOwner(userId);
+        
+        // Si es público, cualquier usuario autenticado puede leerlo
+        allow read: if isAuthenticated() && 
+                     resource.data.isPublic == true;
+        
+        // Validaciones al crear/actualizar
+        allow create: if isOwner(userId) &&
+          hasRequiredFields(['id', 'name', 'questions', 'category']) &&
+          isValidString('name', 200) &&
+          isValidString('category', 50) &&
+          request.resource.data.questions is list &&
+          request.resource.data.questions.size() > 0;
+        
+        allow update: if isOwner(userId) &&
+          isValidString('name', 200) &&
+          isValidString('category', 50);
+      }
+      
+      // ============================================
+      // POMODORO - CONFIGURACIÓN
+      // ============================================
+      match /pomodoro/config {
+        // Solo el propietario puede leer/escribir su configuración
+        allow read, write: if isOwner(userId);
+        
+        // Validaciones
+        allow create, update: if isOwner(userId) &&
+          request.resource.data.workDuration is int &&
+          request.resource.data.shortBreakDuration is int &&
+          request.resource.data.longBreakDuration is int &&
+          request.resource.data.pomodorosUntilLongBreak is int &&
+          request.resource.data.workDuration > 0 &&
+          request.resource.data.shortBreakDuration > 0 &&
+          request.resource.data.longBreakDuration > 0;
+      }
+      
+      // ============================================
+      // POMODORO - ESTADÍSTICAS
+      // ============================================
+      match /pomodoro/stats/{date} {
+        // Solo el propietario puede leer/escribir sus estadísticas
+        allow read, write: if isOwner(userId);
+        
+        // Validaciones
+        allow create, update: if isOwner(userId) &&
+          hasRequiredFields(['date']) &&
+          isValidString('date', 10) &&
+          request.resource.data.totalPomodoros is int &&
+          request.resource.data.totalWorkTime is int;
+      }
+    }
+    
+    // ============================================
+    // CONTENIDO PÚBLICO (Opcional - para futuro)
+    // ============================================
+    
+    // Colección pública para snippets compartidos
+    match /public/snippets/{snippetId} {
+      // Cualquiera puede leer contenido público
+      allow read: if true;
+      
+      // Solo usuarios autenticados pueden crear/actualizar
+      allow create: if isAuthenticated() &&
+        hasRequiredFields(['title', 'code', 'language', 'authorId']) &&
+        isValidString('title', 200) &&
+        isValidString('code', 100000) &&
+        isValidString('language', 50) &&
+        request.resource.data.authorId == request.auth.uid;
+      
+      // Solo el autor puede actualizar/eliminar
+      allow update, delete: if isAuthenticated() &&
+        resource.data.authorId == request.auth.uid;
+    }
+    
+    // Colección pública para quizzes compartidos
+    match /public/quizzes/{quizId} {
+      // Cualquiera puede leer contenido público
+      allow read: if true;
+      
+      // Solo usuarios autenticados pueden crear/actualizar
+      allow create: if isAuthenticated() &&
+        hasRequiredFields(['name', 'questions', 'category', 'authorId']) &&
+        isValidString('name', 200) &&
+        isValidString('category', 50) &&
+        request.resource.data.authorId == request.auth.uid;
+      
+      // Solo el autor puede actualizar/eliminar
+      allow update, delete: if isAuthenticated() &&
+        resource.data.authorId == request.auth.uid;
+    }
+  }
+}

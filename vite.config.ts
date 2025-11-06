@@ -6,6 +6,9 @@ export default defineConfig({
   plugins: [react()],
   root: 'src/renderer',
   base: './',
+  // Especificar dónde buscar el archivo .env (raíz del proyecto)
+  envDir: path.resolve(__dirname),
+  envPrefix: 'VITE_',
   build: {
     outDir: '../../dist-electron/renderer',
     emptyOutDir: true
@@ -19,9 +22,19 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5174,
+    port: 3000,
     strictPort: false,
-    host: true
+    host: true,
+    hmr: {
+      overlay: true
+    },
+    watch: {
+      usePolling: false
+    }
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'jotai'],
+    exclude: ['firebase']
   }
 });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { intelligentSearch } from '../../ai/fuzzySearch';
+import { useNotes } from '../store/hooks';
 import './NotesList.css';
 
 export interface Note {
@@ -19,13 +20,9 @@ interface NotesListProps {
 }
 
 const NotesList: React.FC<NotesListProps> = ({ query = '', category, onSelect }) => {
-  const [notes, setNotes] = useState<Note[]>([]);
+  const { notes } = useNotes();
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
-    loadNotes();
-  }, []);
 
   useEffect(() => {
     if (query) {
@@ -47,18 +44,6 @@ const NotesList: React.FC<NotesListProps> = ({ query = '', category, onSelect })
     setSelectedIndex(0);
   }, [query, category, notes]);
 
-  const loadNotes = async () => {
-    if (window.api?.getConfig) {
-      const config = await window.api.getConfig();
-      const allNotes: Note[] = config.notes || [];
-      setNotes(allNotes);
-      if (query || category) {
-        // Si hay query o category, el useEffect lo filtrará
-      } else {
-        setFilteredNotes(allNotes);
-      }
-    }
-  };
 
   if (notes.length === 0) {
     return (

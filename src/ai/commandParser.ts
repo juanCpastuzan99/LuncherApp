@@ -20,6 +20,7 @@ export type CommandType =
   | 'todo'
   | 'commit'
   | 'docs'
+  | 'firebase'
   | 'unknown';
 
 export interface ParsedCommand {
@@ -144,6 +145,12 @@ export function parseCommand(query: string): ParsedCommand {
   const docsCommand = detectDocsCommand(lowerQuery);
   if (docsCommand) {
     return docsCommand;
+  }
+  
+  // Comando de Firebase/Login/Sync
+  const firebaseCommand = detectFirebaseCommand(lowerQuery);
+  if (firebaseCommand) {
+    return firebaseCommand;
   }
   
   // Comando de búsqueda web
@@ -769,6 +776,53 @@ function detectDocsCommand(query: string): ParsedCommand | null {
         action: 'search',
         query: match[1].trim(),
         confidence: 0.8
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Detecta comandos de Firebase/Login/Sync
+ */
+function detectFirebaseCommand(query: string): ParsedCommand | null {
+  // "login", "iniciar sesión", "sincronizar", "sync", "firebase", "conectar"
+  const loginPatterns = [
+    /^(?:login|iniciar\s+sesi[oó]n|entrar|acceder)$/i,
+    /^(?:sync|sincronizar|sincronizaci[oó]n)$/i,
+    /^(?:firebase|conectar|conexi[oó]n)$/i,
+    /^(?:logout|cerrar\s+sesi[oó]n|desconectar)$/i
+  ];
+  
+  // "registro", "registrarse", "signup", "crear cuenta", "nueva cuenta"
+  const signupPatterns = [
+    /^(?:registro|registrarse|signup|registrar)$/i,
+    /^(?:crear\s+cuenta|nueva\s+cuenta|crear\s+usuario)$/i
+  ];
+  
+  // Verificar primero registro
+  for (const pattern of signupPatterns) {
+    if (pattern.test(query)) {
+      return {
+        type: 'firebase',
+        action: 'signup',
+        confidence: 0.95
+      };
+    }
+  }
+  
+  // Luego login/logout
+  for (const pattern of loginPatterns) {
+    if (pattern.test(query)) {
+      const action = query.includes('logout') || query.includes('cerrar') || query.includes('desconectar')
+        ? 'logout'
+        : 'login';
+      
+      return {
+        type: 'firebase',
+        action,
+        confidence: 0.95
       };
     }
   }

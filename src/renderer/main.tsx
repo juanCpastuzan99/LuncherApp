@@ -9,8 +9,13 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { Provider as JotaiProvider } from 'jotai';
 import App from './App';
 import './index.css';
+
+// Importar Firebase Config para que se inicialice y muestre logs
+// Esto asegura que Firebase se configure antes de que se monte la app
+import '../firebase/config';
 
 // ============================================
 // ERROR BOUNDARY COMPONENT
@@ -236,11 +241,13 @@ function mountApp() {
   try {
     const root = ReactDOM.createRoot(rootElement);
     
-    // Render with Error Boundary
+    // Render with Error Boundary and Jotai Provider
     root.render(
       <React.StrictMode>
         <ErrorBoundary>
-          <App />
+          <JotaiProvider>
+            <App />
+          </JotaiProvider>
         </ErrorBoundary>
       </React.StrictMode>
     );

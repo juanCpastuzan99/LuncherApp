@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTodos } from '../store/hooks';
 import './TodoList.css';
 import type { Todo } from '../../ai/todoManager';
 
@@ -8,14 +9,10 @@ interface TodoListProps {
 }
 
 const TodoList: React.FC<TodoListProps> = ({ query = '', onSelect }) => {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const { todos, updateTodo } = useTodos();
   const [filteredTodos, setFilteredTodos] = useState<Todo[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
-    loadTodos();
-  }, []);
 
   useEffect(() => {
     let filtered = todos;
@@ -49,27 +46,13 @@ const TodoList: React.FC<TodoListProps> = ({ query = '', onSelect }) => {
     setSelectedIndex(0);
   }, [query, filter, todos]);
 
-  const loadTodos = async () => {
-    if (window.api?.getConfig) {
-      const config = await window.api.getConfig();
-      const allTodos: Todo[] = config.todos || [];
-      setTodos(allTodos);
-      setFilteredTodos(allTodos);
-    }
-  };
-
   const handleToggle = async (todo: Todo) => {
-    if (window.api?.setConfig) {
-      const updated = todos.map(t => 
-        t.id === todo.id 
-          ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending', completedAt: t.status === 'pending' ? Date.now() : undefined }
-          : t
-      );
-      await window.api.setConfig('todos', 'list', updated);
-      setTodos(updated);
-      if (onSelect) {
-        onSelect(todo);
-      }
+    await updateTodo(todo.id, {
+      status: todo.status === 'pending' ? 'completed' : 'pending',
+      completedAt: todo.status === 'pending' ? Date.now() : undefined
+    });
+    if (onSelect) {
+      onSelect(todo);
     }
   };
 

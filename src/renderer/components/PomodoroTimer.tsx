@@ -83,11 +83,25 @@ export const PomodoroTimerComponent: React.FC = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
     window.addEventListener('blur', handleBlur);
+    
+    // Listener para cuando se hace click en la notificación
+    let removeFocusListener: (() => void) | undefined;
+    if (window.api?.on) {
+      const listenerResult = window.api.on('focus-pomodoro', () => {
+        syncAfterBackground();
+      });
+      if (typeof listenerResult === 'function') {
+        removeFocusListener = listenerResult;
+      }
+    }
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
+      if (removeFocusListener && typeof removeFocusListener === 'function') {
+        removeFocusListener();
+      }
     };
   }, [syncAfterBackground]);
 
@@ -127,15 +141,30 @@ export const PomodoroTimerComponent: React.FC = () => {
           const isWorkComplete = phase === 'work';
           showAlert(isWorkComplete ? 'work' : 'break');
           
+          // Si termina un descanso, permitir iniciar nuevo ciclo de trabajo
+          if (!isWorkComplete) {
+            // El estado ya está en 'idle' después del descanso
+            // El botón de iniciar estará disponible automáticamente
+          }
+          
           if ('Notification' in window && Notification.permission === 'granted') {
             const message = isWorkComplete
               ? '¡Pomodoro completado! Toma un descanso.'
-              : '¡Descanso terminado! Listo para trabajar.';
-            new Notification('Pomodoro', {
+              : '¡Descanso terminado! Presiona Iniciar para continuar trabajando.';
+            const notification = new Notification('Pomodoro', {
               body: message,
               icon: '/favicon.ico',
               requireInteraction: true
             });
+            
+            // Manejar click en la notificación para abrir/enfocar la ventana
+            notification.onclick = () => {
+              window.focus(); // Enfocar la ventana del navegador
+              if (window.api?.send) {
+                window.api.send('show-window');
+              }
+              notification.close();
+            };
           }
         }
       });
@@ -216,12 +245,20 @@ export const PomodoroTimerComponent: React.FC = () => {
   const handleStart = async () => {
     const timer = await getPomodoroTimer();
     if (status.state === 'idle') {
+      // Iniciar nuevo ciclo de trabajo
       timer.start();
       setShowConfig(false);
       updateStatus();
     } else if (isPaused) {
+      // Reanudar si está pausado
       timer.resume();
       setIsPaused(false);
+      updateStatus();
+    } else if (status.state === 'shortBreak' || status.state === 'longBreak') {
+      // Si está en descanso, detener y comenzar nuevo ciclo de trabajo
+      timer.stop();
+      timer.start();
+      setShowConfig(false);
       updateStatus();
     }
   };
@@ -403,8 +440,16 @@ export const PomodoroTimerComponent: React.FC = () => {
               onClick={() => setShowConfig(!showConfig)}
               title="Configurar tiempos"
             >
-              ⚙️
+              ⚙️ Configuración
             </button>
+          </>
+        ) : (status.state === 'shortBreak' || status.state === 'longBreak') && status.timeRemaining === 0 ? (
+          // Cuando el descanso termina, mostrar botón para iniciar nuevo ciclo
+          <>
+            <button className="control-btn start-btn" onClick={handleStart}>
+              ▶ Iniciar Trabajo
+            </button>
+            <button className="control-btn stop" onClick={handleStop}>⏹</button>
           </>
         ) : (
           <>

@@ -6,7 +6,7 @@
   "bin": {},
   "preferGlobal": true,
   "scripts": {
-    "dev": "set NODE_ENV=development&& concurrently -k -s first \"vite --port 5174\" \"wait-on http://localhost:5174 && electron .\"",
+    "dev": "set NODE_ENV=development&& concurrently -k -s first \"vite --port 3000\" \"wait-on http://localhost:3000 && electron .\"",
     "dev:start": "electron .",
     "dev:file": "set ELECTRON_SIMPLE=1&& electron src/main.js",
     "dev:debug": "set ELECTRON_DEBUG=1&& npm run dev",
@@ -45,6 +45,9 @@
     "@vitejs/plugin-react": "^5.1.0",
     "app-icon": "^0.13.2",
     "electron-store": "^8.2.0",
+    "firebase": "^12.5.0",
+    "jotai": "^2.15.1",
+    "jotai-persist": "^0.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zustand": "^5.0.8"

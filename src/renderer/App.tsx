@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAtom } from 'jotai';
 import SearchBar from './components/SearchBar';
 import ResultsList from './components/ResultsList';
 import CalcResult from './components/CalcResult';
@@ -9,15 +10,26 @@ import NotesList from './components/NotesList';
 import QuizStudy from './components/QuizStudy';
 import SnippetsList from './components/SnippetsList';
 import TodoList from './components/TodoList';
+import { FirebaseAuth } from './components/FirebaseAuth';
+import { SettingsWindow } from './components/SettingsWindow';
 import { intelligentSearch } from '../ai/fuzzySearch';
 import { parseCommand, evaluateMath, formatCalcResult } from '../ai/commandParser';
 import { getSmartSuggestions } from '../ai/smartSuggestions';
 import { createFlashcard } from '../ai/educational';
 import { createTodo } from '../ai/todoManager';
 import { generateCommitMessage } from '../ai/commitGenerator';
+import { 
+  useFavorites,
+  useLaunchHistory,
+  useFlashcards,
+  useNotes,
+  useTodos
+} from './store/hooks';
+import { useStoreInit } from './store/useStoreInit';
+import { useFirebaseSync } from './store/firebaseSync';
+import { appsAtom, appsLoadingAtom } from './store/atoms';
 import type { App } from '../shared/types';
 import type { Note } from './components/NotesList';
-import type { Todo } from '../ai/todoManager';
 import './App.css';
 
 // ============================================
@@ -25,30 +37,11 @@ import './App.css';
 // ============================================
 
 /**
- * Hook para manejar la configuración de la aplicación
- */
-function useAppConfig() {
-  const [launchHistory, setLaunchHistory] = useState<any[]>([]);
-  const [favorites, setFavorites] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (window.api?.getConfig) {
-      window.api.getConfig().then((config: any) => {
-        setLaunchHistory(config.history || []);
-        setFavorites(config.favorites || []);
-      });
-    }
-  }, []);
-
-  return { launchHistory, setLaunchHistory, favorites };
-}
-
-/**
- * Hook para manejar las aplicaciones
+ * Hook para manejar las aplicaciones usando Jotai
  */
 function useApps() {
-  const [apps, setApps] = useState<App[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [apps, setApps] = useAtom(appsAtom);
+  const [isLoading, setIsLoading] = useAtom(appsLoadingAtom);
 
   useEffect(() => {
     if (!window.api) {
@@ -104,7 +97,7 @@ function useApps() {
         window.api.removeAllListeners('apps-updated');
       }
     };
-  }, []);
+  }, [setApps, setIsLoading]);
 
   return { apps, isLoading };
 }
@@ -149,7 +142,7 @@ function useClipboard() {
 // ============================================
 
 interface ViewState {
-  type: 'apps' | 'calc' | 'pomodoro' | 'flashcards' | 'notes' | 'quiz' | 'snippets' | 'todos' | 'commit' | 'empty';
+  type: 'apps' | 'calc' | 'pomodoro' | 'flashcards' | 'notes' | 'quiz' | 'snippets' | 'todos' | 'commit' | 'firebase' | 'settings' | 'empty';
   data?: any;
 }
 
@@ -163,13 +156,35 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Custom hooks
+  // Inicializar store desde persistencia
+  useStoreInit();
+
+  // Activar sincronización automática con Firebase
+  useFirebaseSync();
+
+  // Custom hooks - usando Jotai
   const { apps, isLoading } = useApps();
-  const { launchHistory, setLaunchHistory, favorites } = useAppConfig();
+  const { history: launchHistory, addToHistory } = useLaunchHistory();
+  const { favorites } = useFavorites();
   const { copied, copyToClipboard } = useClipboard();
+  const { addFlashcard } = useFlashcards();
+  const { addNote } = useNotes();
+  const { addTodo } = useTodos();
 
   // Estado unificado de la vista
   const [viewState, setViewState] = useState<ViewState>({ type: 'empty' });
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Verificar si estamos en la ventana de configuración (hash #settings)
+  const isSettingsWindow = window.location.hash === '#settings' || 
+                           window.location.hash === '#/settings';
+  
+  useEffect(() => {
+    if (isSettingsWindow) {
+      setShowSettings(true);
+      setViewState({ type: 'settings' });
+    }
+  }, [isSettingsWindow]);
 
   // Apps filtradas y sugerencias
   const [filteredApps, setFilteredApps] = useState<App[]>([]);
@@ -333,6 +348,10 @@ function App() {
           return null;
         }
         break;
+
+      case 'firebase':
+        // Abrir vista de autenticación (login o signup)
+        return { type: 'firebase', data: { action: command.action || 'login' } };
     }
 
     return null;
@@ -364,7 +383,7 @@ function App() {
   };
 
   const handleCreateFlashcard = async (command: any) => {
-    if (!window.api?.setConfig || !window.api?.getConfig || !command.query) return;
+    if (!command.query) return;
 
     const parts = command.query.split(/es|:/).map((p: string) => p.trim());
     if (parts.length < 2) return;
@@ -374,16 +393,10 @@ function App() {
     const category = command.subject || 'general';
     
     const newCard = createFlashcard(question, answer, category);
-    const config = await window.api.getConfig();
-    const flashcards = config.flashcards?.list || [];
-    await window.api.setConfig('flashcards', 'list', [...flashcards, newCard]);
+    await addFlashcard(newCard);
   };
 
   const handleCreateNote = async (title: string) => {
-    if (!window.api?.setConfig || !window.api?.getConfig) return;
-
-    const config = await window.api.getConfig();
-    const notes: Note[] = config.notes || [];
     const newNote: Note = {
       id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       title,
@@ -393,19 +406,15 @@ function App() {
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
-    await window.api.setConfig('notes', 'list', [...notes, newNote]);
+    await addNote(newNote);
   };
 
   const handleCreateTodo = async (title: string) => {
-    if (!window.api?.setConfig || !window.api?.getConfig) return;
-
-    const config = await window.api.getConfig();
-    const todos: Todo[] = config.todos || [];
     const newTodo = createTodo(title);
-    await window.api.setConfig('todos', 'list', [...todos, newTodo]);
+    await addTodo(newTodo);
   };
 
-  const handleLaunch = useCallback((app: App) => {
+  const handleLaunch = useCallback(async (app: App) => {
     if (!window.api) return;
 
     const command = parseCommand(searchQuery);
@@ -428,15 +437,15 @@ function App() {
     // Lanzar aplicación normal
     window.api.send('launch', app);
     
-    // Actualizar historial
-    setLaunchHistory(prev => [{
+    // Actualizar historial usando Jotai
+    await addToHistory({
       id: app.id,
       timestamp: Date.now(),
       appName: app.name
-    }, ...prev].slice(0, 100));
+    });
     
     resetAndHide();
-  }, [searchQuery, setLaunchHistory]);
+  }, [searchQuery, addToHistory]);
 
   const resetAndHide = () => {
     setSearchQuery('');
@@ -501,41 +510,102 @@ function App() {
     viewState.type !== 'empty' || 
     searchQuery.trim();
 
+  const handleConfigClick = useCallback(async () => {
+    console.log('🔧 Botón de configuración clickeado');
+    
+    // Abrir ventana independiente de configuración
+    if (window.api?.openSettingsWindow) {
+      try {
+        const result = await window.api.openSettingsWindow();
+        if (result.success) {
+          console.log('✅ Ventana de configuración abierta');
+        } else {
+          console.error('❌ Error abriendo ventana:', result.error);
+          // Fallback: mostrar modal en la ventana principal
+          setShowSettings(true);
+        }
+      } catch (error) {
+        console.error('❌ Error al abrir ventana de configuración:', error);
+        // Fallback: mostrar modal en la ventana principal
+        setShowSettings(true);
+      }
+    } else {
+      // Fallback si no hay API disponible
+      setShowSettings(true);
+    }
+    
+    setSearchQuery('');
+    setTimeout(() => {
+      searchInputRef.current?.blur();
+    }, 100);
+  }, []);
+
+  // Cerrar settings con ESC
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showSettings) {
+        setShowSettings(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showSettings]);
+
+  // Si estamos en la ventana de configuración independiente, solo mostrar SettingsWindow
+  if (isSettingsWindow) {
+    return (
+      <SettingsWindow onClose={async () => {
+        if (window.api?.closeSettingsWindow) {
+          await window.api.closeSettingsWindow();
+        }
+      }} />
+    );
+  }
+
+  // Vista normal del launcher
   return (
-    <div className="app-container" onKeyDown={handleKeyDown} tabIndex={0}>
-      <SearchBar
-        ref={searchInputRef}
-        value={searchQuery}
-        onChange={setSearchQuery}
-        placeholder="Buscar aplicaciones..."
-      />
-      
-      {/* Sugerencias sin búsqueda */}
-      {!searchQuery.trim() && suggestions.length > 0 && !isLoading && (
-        <SmartSuggestions suggestions={suggestions} onSelect={handleLaunch} />
+    <>
+      <div className="app-container" onKeyDown={handleKeyDown} tabIndex={0}>
+        <SearchBar
+          ref={searchInputRef}
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Buscar aplicaciones..."
+          onConfigClick={handleConfigClick}
+        />
+        
+        {/* Sugerencias sin búsqueda */}
+        {!searchQuery.trim() && suggestions.length > 0 && !isLoading && (
+          <SmartSuggestions suggestions={suggestions} onSelect={handleLaunch} />
+        )}
+        
+        {/* Área de contenido */}
+        {shouldShowContentArea && (
+          <div className="content-area" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
+            {isLoading ? (
+              <LoadingState />
+            ) : (
+              <ContentRenderer
+                viewState={viewState}
+                searchQuery={searchQuery}
+                filteredApps={filteredApps}
+                selectedIndex={selectedIndex}
+                copied={copied}
+                suggestions={suggestions}
+                onLaunch={handleLaunch}
+                onCopySnippet={copyToClipboard}
+                onCloseView={() => setSearchQuery('')}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Ventana de Configuración (modal en ventana principal) */}
+      {showSettings && (
+        <SettingsWindow onClose={() => setShowSettings(false)} />
       )}
-      
-      {/* Área de contenido */}
-      {shouldShowContentArea && (
-        <div className="content-area" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
-          {isLoading ? (
-            <LoadingState />
-          ) : (
-            <ContentRenderer
-              viewState={viewState}
-              searchQuery={searchQuery}
-              filteredApps={filteredApps}
-              selectedIndex={selectedIndex}
-              copied={copied}
-              suggestions={suggestions}
-              onLaunch={handleLaunch}
-              onCopySnippet={copyToClipboard}
-              onCloseView={() => setSearchQuery('')}
-            />
-          )}
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -643,6 +713,11 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
             <div className="commit-copied">✓ Copiado al portapapeles</div>
           )}
         </div>
+      );
+
+    case 'firebase':
+      return (
+        <FirebaseAuth initialAction={viewState.data?.action || 'login'} />
       );
 
     case 'apps':

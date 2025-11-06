@@ -6,14 +6,14 @@ const api = {
   
   // IPC methods
   send: (channel, data) => {
-    const validChannels = ['scan-apps', 'launch', 'hide-window', 'window-action', 'clear-cache'];
+    const validChannels = ['scan-apps', 'launch', 'hide-window', 'window-action', 'clear-cache', 'show-window'];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
     }
   },
   
   on: (channel, callback) => {
-    const validChannels = ['apps-updated', 'focus-search', 'cache-cleared'];
+    const validChannels = ['apps-updated', 'focus-search', 'cache-cleared', 'focus-pomodoro'];
     if (validChannels.includes(channel)) {
       const handler = (event, ...args) => {
         try {
@@ -45,6 +45,15 @@ const api = {
   // Cache methods
   clearCache: () => {
     ipcRenderer.send('clear-cache');
+  },
+
+  // Settings window methods
+  openSettingsWindow: async () => {
+    return ipcRenderer.invoke('open-settings-window');
+  },
+
+  closeSettingsWindow: async () => {
+    return ipcRenderer.invoke('close-settings-window');
   }
 };
 

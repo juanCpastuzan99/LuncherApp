@@ -7,6 +7,8 @@ export interface ElectronAPI {
   setConfig?: (section: string, key: string, value: any) => Promise<any>;
   getConfig?: () => Promise<any>;
   clearCache?: () => void;
+  openSettingsWindow?: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  closeSettingsWindow?: () => Promise<{ success: boolean; message?: string }>;
 }
 
 declare global {

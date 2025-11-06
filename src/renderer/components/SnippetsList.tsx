@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { intelligentSearch } from '../../ai/fuzzySearch';
+import { useSnippets } from '../store/hooks';
 import './SnippetsList.css';
 import type { CodeSnippet } from '../../ai/codeSnippets';
 
@@ -10,13 +11,9 @@ interface SnippetsListProps {
 }
 
 const SnippetsList: React.FC<SnippetsListProps> = ({ query = '', language, onSelect }) => {
-  const [snippets, setSnippets] = useState<CodeSnippet[]>([]);
+  const { snippets } = useSnippets();
   const [filteredSnippets, setFilteredSnippets] = useState<CodeSnippet[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
-    loadSnippets();
-  }, []);
 
   useEffect(() => {
     if (query) {
@@ -44,14 +41,6 @@ const SnippetsList: React.FC<SnippetsListProps> = ({ query = '', language, onSel
     setSelectedIndex(0);
   }, [query, language, snippets]);
 
-  const loadSnippets = async () => {
-    if (window.api?.getConfig) {
-      const config = await window.api.getConfig();
-      const allSnippets: CodeSnippet[] = config.snippets || [];
-      setSnippets(allSnippets);
-      setFilteredSnippets(allSnippets);
-    }
-  };
 
   const handleCopy = async (snippet: CodeSnippet) => {
     try {

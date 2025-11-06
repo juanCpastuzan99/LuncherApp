@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Flashcard, getCardsToReview, calculateNextReview, createFlashcard, getFlashcardStats } from '../../ai/educational';
+import { useFlashcards } from '../store/hooks';
 import './FlashcardStudy.css';
 
 interface FlashcardStudyProps {
@@ -8,43 +9,30 @@ interface FlashcardStudyProps {
 }
 
 const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ category, onClose }) => {
+  const { flashcards: allFlashcards, updateFlashcards } = useFlashcards();
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
-    loadFlashcards();
-  }, [category]);
+    const cardsToReview = getCardsToReview(allFlashcards, category);
+    setFlashcards(cardsToReview);
+    setStats(getFlashcardStats(allFlashcards));
+  }, [category, allFlashcards]);
 
-  const loadFlashcards = async () => {
-    if (window.api?.getConfig) {
-      const config = await window.api.getConfig();
-      const allCards: Flashcard[] = config.flashcards?.list || [];
-      const cardsToReview = getCardsToReview(allCards, category);
-      setFlashcards(cardsToReview);
-      setStats(getFlashcardStats(allCards));
-    }
-  };
-
-  const saveFlashcards = async (updatedCards: Flashcard[]) => {
-    if (window.api?.getConfig && window.api?.setConfig) {
-      const config = await window.api.getConfig();
-      await window.api.setConfig('flashcards', 'list', updatedCards);
-      setFlashcards(updatedCards.filter(c => c.nextReview <= Date.now()));
-      setStats(getFlashcardStats(updatedCards));
-    }
-  };
-
-  const handleAnswer = (quality: number) => {
+  const handleAnswer = async (quality: number) => {
     if (currentIndex >= flashcards.length) return;
 
     const currentCard = flashcards[currentIndex];
     const updated = calculateNextReview(currentCard, quality);
-    const updatedCards = [...flashcards];
-    updatedCards[currentIndex] = updated;
-
-    saveFlashcards(updatedCards);
+    
+    // Actualizar en todas las flashcards, no solo en las filtradas
+    const updatedAllCards = allFlashcards.map(card => 
+      card.id === currentCard.id ? updated : card
+    );
+    
+    await updateFlashcards(updatedAllCards);
     setShowAnswer(false);
     
     if (currentIndex < flashcards.length - 1) {
@@ -52,7 +40,6 @@ const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ category, onClose }) =>
     } else {
       // Completado
       setCurrentIndex(0);
-      loadFlashcards();
     }
   };
 

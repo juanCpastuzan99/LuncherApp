@@ -445,10 +445,20 @@
   }
   
   .control-btn.config-btn {
-    background: rgba(255, 255, 255, 0.1);
-    padding: 0.5rem;
+    background: rgba(99, 102, 241, 0.2);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #818cf8;
+    padding: 12px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
   
   .control-btn.config-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(99, 102, 241, 0.3);
+    border-color: rgba(99, 102, 241, 0.5);
+    color: #a5b4fc;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   }
